@@ -1,0 +1,16 @@
+AviviD.block_killswitch = {
+    "block_like": 1,
+    "block_other": 1,
+    "block_large": 1,
+    "block_history": 1,
+    "block_keyword": 1,
+    "block_uuid_keyword": 1,
+    "block_other_keyword": 1,
+    "block_sider_bar": 1,
+    "notify_enable": 1,
+    "sliding_enable": 1,
+    "before_page_enable":1,
+    "block_keyword_searchbar":1,
+    "block_cart_recommend":1,
+    "enable_addfan":1,
+}

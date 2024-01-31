@@ -1,0 +1,50 @@
+
+var ftGUID_7928914="5699A48D7EA6F1";
+var ftConfID_7928914="0";
+var ftParams_7928914="ftOBA=1&ft_domain=vanbcca100.pixnet.net&ft_ifb=1&ft_agentEnv=0&ft_referrer=https://vanbcca100.pixnet.net/blog/post/333187246-%25E7%2590%2586%25E8%25B2%25A1%25E7%25AC%25AC%25E4%25B8%2580%25E6%25AD%25A5%25EF%25BC%258C%25E5%25BE%259E%25E8%25A8%2598%25E5%25B8%25B3%25E9%2596%258B%25E5%25A7%258B--%25E3%2580%258C%25E8%25B6%2585%25E7%25B0%25A1%25E6%2598%2593exc;https%3A%2F%2Fvanbcca100.pixnet.net%2Fblog%2Fpost%2F333187246-%25E7%2590%2586%25E8%25B2%25A1%25E7%25AC%25AC%25E4%25B8%2580%25E6%25AD%25A5%25EF%25BC%258C%25E5%25BE%259E%25E8%25A8%2598%25E5%25B8%25B3%25E9%2596%258B%25E5%25A7%258B--%25E3%2580%258C%25E8%25B6%2585%25E7%25B0%25A1%25E6%2598%2593exc&gdpr=0&us_privacy=${US_PRIVACY}&site_url=https://vanbcca100.pixnet.net/blog/post/333187246-%25E7%2590%2586%25E8%25B2%25A1%25E7%25AC%25AC%25E4%25B8%2580%25E6%25AD%25A5%25EF%25BC%258C%25E5%25BE%259E%25E8%25A8%2598%25E5%25B8%25B3%25E9%2596%258B%25E5%25A7%258B--%25E3%2580%258C%25E8%25B6%2585%25E7%25B0%25A1%25E6%2598%2593exc&pub_id=1&sup_platform=1&cachebuster=329629.7747082719&ft_keyword=DV360CampID:__20016100240__&ft_section=DV360CampID:20016100240&ft_partnerimpid=ABAjH0iIqQSThgCa810GS0VeOj4q";
+var ftKeyword_7928914="";
+var ftCustom_7928914="";
+var ftSection_7928914="DV360CampID:20016100240";
+var ftSegment_7928914="afr5";
+var ftSegmentList_7928914=[{s:'afr5'}];
+var ftRuleMatch_7928914="0";
+var ftTimestamp_7928914="1706673436";
+var ftGeoC2_7928914="tw";
+var ftGeoState_7928914="txg";
+var ftGeoCity_7928914="situn district";
+var ftISP_7928914="cht.com.twchunghwa telecom data communication business group";
+var ftSpeed_7928914="broadband";
+var ftConnType_7928914="wifi";
+var ftDMA_7928914="-1";
+var ftLong_7928914="120.64";
+var ftLat_7928914="24.17";
+var ftPostal_7928914="407 01";
+var ftTimeZone_7928914="+800";
+var ftMobileCarrier_7928914="";
+var ftImp7928914 = {};
+ftImp7928914.privacy = "x";
+ftImp7928914.guidAge = "175";
+ftImp7928914.impID = "C3B41C7A-00EE-53D2-DF6B-D320A4EB2514";
+ftImp7928914.duid = "FT:5699A48D7EA6F1";
+
+ftImp7928914.ft_tpplid = "";
+ftImp7928914.ft_c = {};
+ftImp7928914.gdpr = "0";
+ftImp7928914.gdpr_consent = "";
+ftImp7928914.gdpr_pd = "";
+ftImp7928914.oob_consent = "";
+ftImp7928914.gdprStoredConsent = "";
+ftImp7928914.us_privacy = "!!US_PRIVACY!";
+ftImp7928914.gpc = "";
+
+ftImp7928914.jsAppend = "1";
+(function(){
+    var tag = document.getElementById('ft_servedby_7928914') || (function(s){
+    	return s[s.length-1];
+    }(document.getElementsByTagName('script'))),
+           js = document.createElement('script');
+    js.src =
+"https://cdn.flashtalking.com/xre/792/7928914/4533797/js/j-7928914-4533797.js";
+    js.id = "ftscript_m7928914";
+    tag.parentNode.insertBefore(js, tag);
+}());

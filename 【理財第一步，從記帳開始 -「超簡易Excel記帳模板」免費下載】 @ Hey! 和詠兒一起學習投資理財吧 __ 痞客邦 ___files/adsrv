@@ -1,0 +1,97 @@
+/* in-freq, hit 3 tw */
+if (ONEAD_text_response_2i9r5 !== undefined && typeof ONEAD_text_response_2i9r5 == 'function'){
+    ONEAD_text_response_2i9r5({
+      "guid": "19cf0dcb-3670-11ee-8268-0242ac130002"
+    , "pid": 4009114
+    , "uid": 1000016
+    , "adv_id": 1472
+    , "camp_id": 19371
+    , "ct_id": 2
+    , "pm_id": 82736
+    , "play_mode": "text-drive"
+    , "tout": 3000
+    , "is_cprp": "true"
+    , "is_vast": "false"
+    , "is_custom_pid": "false"
+    , "force_backend": "false"
+    , "player_type": "TEXT_ONLY"    , "base_url": "https://onead.onevision.com.tw/"
+    , "tracking": "https://onead.onevision.com.tw/v2/async?_hash=17850549051519192427&action=&c1=4009114&c2=text-drive&c6=36648&clicklabel=[CLICKLABEL]&cmpid=19371&csg=0612b49f-9353-11ee-98d3-42010a006ae7&ctid=2&dt=1706673457&eng=&errorcode=[ERRORCODE]&errordesc=[ERRORDESC]&errormsg=[ERRORMSG]&event=[EVENT]&gc=3&host=https%3A%2F%2Fonead.onevision.com.tw%2F&isbrd=0&issg=1&ix=0&oneidx=17749896-2560-356a-81e1-8ba9ac7af6ea&p1=1000016&p11=10&p2=19cf0dcb-3670-11ee-8268-0242ac130002&p3=https%3A%2F%2Fvanbcca100.pixnet.net%2Fblog%2Fpost%2F333187246-%25E7%2590%2586%25E8%25B2%25A1%25E7%25AC%25AC%25E4%25B8%2580%25E6%25AD%25A5%25EF%25BC%258C%25E5%25BE%259E%25E8%25A8%2598%25E5%25B8%25B3%25E9%2596%258B%25E5%25A7%258B--%25E3%2580%258C%25E8%25B6%2585%25E7%25B0%25A1%25E6%2598%2593exc&p4=%E3%80%90%E7%90%86%E8%B2%A1%E7%AC%AC%E4%B8%80%E6%AD%A5%EF%BC%8C%E5%BE%9E%E8%A8%98%E5%B8%B3%E9%96%8B%E5%A7%8B+-%E3%80%8C%E8%B6%85%E7%B0%A1%E6%98%93Excel%E8%A8%98%E5%B8%B3%E6%A8%A1%E6%9D%BF%E3%80%8D%E5%85%8D%E8%B2%BB%E4%B8%8B%E8%BC%89%E3%80%91+%40+Hey%21+%E5%92%8C%E8%A9%A0%E5%85%92%E4%B8%80%E8%B5%B7%E5%AD%B8%E7%BF%92%E6%8A%95%E8%B3%87%E7%90%86%E8%B2%A1%E5%90%A7+%3A%3A+%E7%97%9E%E5%AE%A2%E9%82%A6+%3A%3A&p5=https%3A%2F%2Fwww.google.com%2F&p6=82cb5940aac9f20bd8de5e655351ec39%3A203.69.151.100&p7=&plaid=82736&plt=TEXT_ONLY&pms=text-drive&ssid=2kabx&uam=3584&z2=1&z2=2&z2=3&z2=4&z2=6&z2=7&z2=8&z2=10&z2=12&z2=13&z2=14&z2=15&z2=108&z2=406&z2=418&z2=1010&z2=1024"
+    , "l_json": {
+            "xml": {
+              "companions": "",
+              "interactive": "",
+              "linkXml": {
+                "AdvID": "1472",
+                "CampID": "19371",
+                "Extensions": {
+                  "Extension": [
+                    {
+                      "-type": "OneAD",
+                      "CustomEvents": {
+                        "-count": "4",
+                        "CustomEvent": [
+                          {
+                            "#content": "\u003cscript\u003e (function () { var topHead = window.top.document.head; var initializationScript = document.createElement('script'); var initializationCode = \"!function (f, b, e, v, n, t, s) {if (f.fbq) return; n = f.fbq = function () {n.callMethod ?n.callMethod.apply(n, arguments) : n.queue.push(arguments)};if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0';n.queue = []; t = b.createElement(e); t.async = !0;t.src = v; s = b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t, s)}(window, document, 'script','https://connect.facebook.net/en_US/fbevents.js');\"; initializationScript.innerHTML = initializationCode; topHead.appendChild(initializationScript); })(); \u003c/script\u003e",
+                            "-event": "cv",
+                            "-format": "html"
+                          },
+                          {
+                            "#content": "\u003cscript\u003e (function () { var account = 1220357551418401; var eventName = 'onead_Loan_click'; var topHead = window.top.document.head; var eventScript = document.createElement('script'); var eventCode = \"fbq('init', '\" + account + \"');fbq('trackSingleCustom', '\" + account + \"', '\" + eventName + \"');\"; eventScript.innerHTML = eventCode; topHead.appendChild(eventScript); })(); \u003c/script\u003e",
+                            "-event": "click",
+                            "-format": "html"
+                          },
+                          {
+                            "#content": "\u003cscript\u003e (function () { var account = 'AW-818929551'; var topHead = window.top.document.head; var scriptDiv = document.createElement('script'); scriptDiv.src = 'https://www.googletagmanager.com/gtag/js?id=' + account; var initializationScript = document.createElement('script'); var initializationCode = \"window.dataLayer = top.dataLayer || [];function gtag() {dataLayer.push(arguments);}gtag('js', new Date());gtag('config', '\" + account + \"');\"; initializationScript.innerHTML = initializationCode; topHead.appendChild(scriptDiv); topHead.appendChild(initializationScript); }) (); \u003c/script\u003e",
+                            "-event": "cv",
+                            "-format": "html"
+                          },
+                          {
+                            "#content": "\u003cscript\u003e (function () { var account = 'AW-818929551'; var eventName = 'onead_Loan_click'; var topHead = window.top.document.head; var eventCode = \"gtag('event', '\" + eventName + \"', { 'send_to': '\" + account + \"', '\" + eventName + \"': '\" + eventName + \"' });\"; var eventScript = document.createElement('script'); eventScript.innerHTML = eventCode; topHead.appendChild(eventScript); }) (); \u003c/script\u003e",
+                            "-event": "click",
+                            "-format": "html"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "-type": "OneAD",
+                      "CustomEvents": {
+                        "-count": "0"
+                      }
+                    }
+                  ]
+                },
+                "PID": "4009114",
+                "PmID": "82736",
+                "UID": "1000016",
+                "autoPlay": "",
+                "body": "",
+                "bypassButtonSecond": "0",
+                "clickURL": "null",
+                "defaultURL": "",
+                "emojis": "",
+                "holdonSecond": "0",
+                "playerMode": "text-drive",
+                "playerType": "TEXT_ONLY",
+                "requestTitle": "1227 王道銀行信貸_二順位房貸宣傳 TextDrive2",
+                "show_identity": "true",
+                "tracking_code": ""
+              },
+              "text_contents": {
+                "text_content": {
+                  "content": "《情報》喜迎龍年，王道銀行 信貸開辦費0元，現金急速到手好過年！",
+                  "countDown": {
+                    "dueDayTime": "0",
+                    "unit": ""
+                  },
+                  "linkURL": "https://www.o-bank.com/Web/loan_apply_landing/personalloan/index.aspx?SourceCode=OneAd-Text\u0026CampaignCode=R-PL-2023062601\u0026utm_campaign=R-PL-2023062601\u0026utm_source=OneAd\u0026utm_medium=Text2\u0026ChannelCode=Referral",
+                  "tid": "804",
+                  "title": "1227 王道銀行信貸_二順位房貸宣傳 TextDrive2"
+                }
+              },
+              "videos": ""
+            }
+          ,"tracking":"https://onead.onevision.com.tw/v2/async?_hash=17850549051519192427&action=&c1=4009114&c2=text-drive&c6=36648&clicklabel=[CLICKLABEL]&cmpid=19371&csg=0612b49f-9353-11ee-98d3-42010a006ae7&ctid=2&dt=1706673457&eng=&errorcode=[ERRORCODE]&errordesc=[ERRORDESC]&errormsg=[ERRORMSG]&event=[EVENT]&gc=3&host=https%3A%2F%2Fonead.onevision.com.tw%2F&isbrd=0&issg=1&ix=0&oneidx=17749896-2560-356a-81e1-8ba9ac7af6ea&p1=1000016&p11=10&p2=19cf0dcb-3670-11ee-8268-0242ac130002&p3=https%3A%2F%2Fvanbcca100.pixnet.net%2Fblog%2Fpost%2F333187246-%25E7%2590%2586%25E8%25B2%25A1%25E7%25AC%25AC%25E4%25B8%2580%25E6%25AD%25A5%25EF%25BC%258C%25E5%25BE%259E%25E8%25A8%2598%25E5%25B8%25B3%25E9%2596%258B%25E5%25A7%258B--%25E3%2580%258C%25E8%25B6%2585%25E7%25B0%25A1%25E6%2598%2593exc&p4=%E3%80%90%E7%90%86%E8%B2%A1%E7%AC%AC%E4%B8%80%E6%AD%A5%EF%BC%8C%E5%BE%9E%E8%A8%98%E5%B8%B3%E9%96%8B%E5%A7%8B+-%E3%80%8C%E8%B6%85%E7%B0%A1%E6%98%93Excel%E8%A8%98%E5%B8%B3%E6%A8%A1%E6%9D%BF%E3%80%8D%E5%85%8D%E8%B2%BB%E4%B8%8B%E8%BC%89%E3%80%91+%40+Hey%21+%E5%92%8C%E8%A9%A0%E5%85%92%E4%B8%80%E8%B5%B7%E5%AD%B8%E7%BF%92%E6%8A%95%E8%B3%87%E7%90%86%E8%B2%A1%E5%90%A7+%3A%3A+%E7%97%9E%E5%AE%A2%E9%82%A6+%3A%3A&p5=https%3A%2F%2Fwww.google.com%2F&p6=82cb5940aac9f20bd8de5e655351ec39%3A203.69.151.100&p7=&plaid=82736&plt=TEXT_ONLY&pms=text-drive&ssid=2kabx&uam=3584&z2=1&z2=2&z2=3&z2=4&z2=6&z2=7&z2=8&z2=10&z2=12&z2=13&z2=14&z2=15&z2=108&z2=406&z2=418&z2=1010&z2=1024","eng":"https://onead.onevision.com.tw/v2/eng/82736?h=6314787065599894095&ts=1706673457416541036"}  
+    , "l_url": "https://onead.onevision.com.tw/cprp/xml/4009114/l.xml?pid=4009114&cmpid=19371&uid=1000016&guid=19cf0dcb-3670-11ee-8268-0242ac130002"
+    });
+}

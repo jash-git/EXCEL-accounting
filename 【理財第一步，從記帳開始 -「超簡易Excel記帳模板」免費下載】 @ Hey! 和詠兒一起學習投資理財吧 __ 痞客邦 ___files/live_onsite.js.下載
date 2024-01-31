@@ -1,0 +1,188 @@
+AviviD.imitation_subscribe_webpush = async function(status, onpage_type) {
+    try{
+        await AviviD.get_live_data()
+    }catch (e) {
+        console.log(e);
+    }
+}
+
+AviviD.get_live_data = function() {
+    // console.log('get_live_data')
+    let web_id = AviviD.web_id;
+    let ad_id = (AviviD.get_cookie('AviviD_live_ad_id') != null) ? AviviD.get_cookie('AviviD_live_ad_id') : "_";
+    let status = 1 ;
+    var ajax_setting = {
+        "data_url": "https://sun.advividnetwork.com/api/live_stream_api.php",
+        "http_method": "GET",
+        "data_type": "json",
+        "payload": {
+                    'web_id': web_id,
+                    'ad_id': ad_id,
+                    'type': 'onsite',
+                },
+        "async": false,
+        "headers": {},
+        "cache": false,
+        // 'callback_function': 'set_live_status',
+    };
+    
+    AviviD.live_data = AviviD.get_ajax_datas(ajax_setting, status, false);
+    
+    // AviviD.get_v19_html_template(AviviD.live_data);
+    // AviviD.get_ajax_datas(ajax_setting, status, false);
+}
+// AviviD.set_live_status = function(){
+//     // console.log('live_on')
+//     AviviD.live_on = true;
+//直播api log
+
+AviviD.live_give_api_log = function(type) {//0414蓋版直播測試data
+    // console.log('get_live_data')
+    let status = 1 ;
+    let web_id = AviviD.web_id;
+    var ajax_setting = {
+        "data_url": "https://corgi.gaii.ai/api/live_give_api_log.php",
+        "http_method": "POST",
+        "data_type": "json",
+        "payload": {
+                'web_id': AviviD.web_id,
+                'uuid':  AviviD.uuid,
+                'type': type,//版型
+            },
+        "async": false,
+        "headers": {},
+        "cache": false,
+    };
+    
+    AviviD.get_ajax_datas(ajax_setting, status, false);
+    
+    // AviviD.get_v19_html_template(AviviD.live_data);
+    // AviviD.get_ajax_datas(ajax_setting, status, false);
+}
+// }
+AviviD.get_new_live_html_template = function(data) {
+    console.log('get_new_live_html_template');
+    // AviviD.highest_zindex(avivid_live_stream);
+    webpushData = {
+        version: "live",
+        beacon: '_',
+        title_only: '0',
+        click_url: '_',
+        title: '_',
+        up_content: '_',
+        content: '_',
+        logo_img: '_',
+        s_img: '_',
+        b_img: '_',
+        video_url: "_",
+        avivid_os_mobile: "_",
+        avivid_banner_id: '_',
+        web_id: AviviD.web_id,
+        ios_uuid: '_',
+        ad_id: data.ad_id,
+        with_button: data.with_button ? data.with_button : "_",
+        button1_url: data.button_one_url ? data.button_one_url : "_",
+        button1_title: data.button_one_title ? data.button_one_title : "_",
+        button1_msg: data.button1_msg ? data.button1_msg : "_",
+        button1_icon: data.button1_icon ? data.button1_icon : "_",
+        push_id: data.ad_id,
+        wp_positon: '0',
+        wp_up_down_status: '0',
+        live_url:data.video,
+        live_time:'_',
+        live_status:'live_straight',
+        record_click: data.record_click,
+        backgroup: data.backgroup,
+    }
+    webpushDataEncoded = webpushData;
+    webpush_iframe = `
+    <div class="avivid_live_container" style="background-image:url('`+ webpushData.backgroup +`')">    
+        <iframe id="avivid_webpush_frame" src="https://avivid.likr.tw/api/avivid_webpush_frame_livestream_pixnet.html"></iframe>
+    </div>`;
+    AviviD.show_avivid_onpage(webpush_iframe);
+    
+}
+AviviD.show_avivid_onpage = function(html, onpage_data) {
+    if (self.frameElement && self.frameElement.tagName == "IFRAME") { //判斷自己是否身在iframe
+        // console.log('in iframe')
+        return false;
+    } else {
+        if(jQuery("#avivid_live1").length >0){
+            var onpage_css = "https://avivid.likr.tw/api/live_pixnet.css";
+            jQuery('head').append('<link rel="stylesheet" type="text/css" href="' + onpage_css + '">');
+            AviviD.div_append(html);
+        }else{
+            setTimeout(function(){
+                AviviD.show_avivid_onpage(html);;
+            },1000)
+        }
+    }
+};
+AviviD.div_append = function(html){
+    jQuery("#avivid_live1").append(html);
+    AviviD.live_give_api_log('onsite');
+    iFrame = document.getElementById('avivid_webpush_frame');
+    iFrame.onload = function(){
+        if(AviviD.debug_mode || AviviD.demo_mode){
+            // console.log('avivid_webpush_frame finished');
+        }
+        // iframe加载完立即发送一条消息
+        iFrame.contentWindow.postMessage(webpushDataEncoded,'*');
+        // AviviD.webpush_showing(screen.width);
+        // AviviD.set_cookie('AviviD_push_id', push_id);
+        // AviviD.ios_visibilitychange(hide=true);
+    //     if (data.image == "_"){ // 如果沒有圖片，使用文字版更改外型高度
+    //         if(screen.width < 416){
+    //             // jQuery311("#avivid_waterfall_webpush").css("height", "100px");
+    //             $("#avivid_waterfall_webpush_i").css({
+    //                 "height": "22vw",
+    //                 "min-height": "unset"
+    //             });
+    //         }else{
+    //             // jQuery311("#avivid_waterfall_webpush").css("height", "115px");
+    //             $("#avivid_waterfall_webpush_i").css({
+    //                 "height": "6vw",
+    //                 "min-height": "unset"
+    //             });
+    //         }
+    //     }
+    }
+}
+
+AviviD.get_ajax_datas = function(ajax_setting, status, force_error_callback) {
+    var return_data = {};
+    jQuery.ajax({
+        type: ajax_setting["http_method"],
+        dataType: ajax_setting["data_type"],
+        async: ajax_setting["async"],
+        data: ajax_setting["payload"],
+        url: ajax_setting["data_url"],
+        headers: ajax_setting["headers"],
+        crossDomain: true,
+        cache: ajax_setting["cache"],
+        timeout: 2000,
+        xhrFields: {
+            withCredentials: false
+        },
+    }).done(function(data) {
+        if (ajax_setting["async"]) {
+            AviviD[ajax_setting["callback_function"]](data, status, ajax_setting);
+        } else {
+            return_data = data;
+        }
+    }).fail(function(data) {
+        if (force_error_callback) {
+            AviviD.console_log(ajax_setting["data_url"] + " " + ajax_setting["callback_function"] + " empty!");
+            AviviD[ajax_setting["callback_function"]]({}, status, ajax_setting);
+        }
+    });
+    return return_data;
+};
+
+AviviD.imitation_subscribe_webpush().then(
+    function(){
+        if('video' in AviviD.live_data){
+            AviviD.get_new_live_html_template(AviviD.live_data);
+        }
+    }
+);

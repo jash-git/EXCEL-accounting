@@ -1,0 +1,3283 @@
+AviviD.url_rules = function (keys, settings) {
+  var url = window.location.href;
+  var url_match = 0;
+  if (parseInt(settings["force_domain"]) == 1) {
+    jQuery.each(settings["domain_list"], function (k, v) {
+      if (url == v || url.indexOf(v + "?") != -1) {
+        url_match = 1;
+        return false;
+      }
+    });
+  } else {
+    if (url.indexOf(settings["check_rule"]) != -1) {
+      url_match = 1;
+    }
+  }
+  var log = "ignore " + keys;
+  if (url_match) {
+    var ab_test_mark = AviviD.check_ab_test_mark();
+    var new_abtest_result = new_abtest();
+
+    AviviD.loadJavaScript("https://avividone.likr.tw/killswitch/killswitch_config.js", function () {
+      // check for product page
+      if ((settings["product_page_mark"] == 1) && (AviviD.block_killswitch['block_history'] == 1)) {
+        // check for history component
+        if ((settings["block"]["block_history"]["enabled"] == 0) && (settings["block"]["block_sider_bar"]["enabled"] == 0)) {
+          // update footprint, foot id
+          var meta_title = AviviD.get_metatitle();
+          var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+          ajax_setting = AviviD.block_data_setting["block_history"]
+          payload = {
+            "web_id": AviviD.web_id,
+            "data": meta_title,
+            "url": decodeURIComponent(meta_url),
+            "type": "id"
+          };
+          history_block_data = "_";
+          jQuery.ajax({
+            type: ajax_setting["http_method"],
+            async: false,
+            data: payload,
+            url: ajax_setting["data_url"],
+            headers: ajax_setting["headers"],
+            crossDomain: true,
+            cache: true, //ajax_setting["cache"],
+            timeout: 3000, //ajax_setting["timeout"],
+            success: function (data) {
+              if (data != '' && data != '_') {
+                history_block_data = JSON.parse(data);
+              }
+            },
+            complete: function (XMLHttpRequest, textStatus) {
+              if (textStatus == "timeout") {
+                console.log("block_history ajax timeout!");
+              }
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+              console.log("block_history ajax error");
+              console.log("jqXHR: ", jqXHR);
+              console.log("textStatus: " + textStatus);
+              console.log("errorThrown: " + errorThrown);
+            }
+          });
+          AviviD.get_product_items_for_block_history(history_block_data);
+        }
+      }
+
+      jQuery.each(settings["block"], function (k, v) {
+        if ((parseInt(v["enabled"]) == 1) && (AviviD.block_killswitch[k] == 1)) {
+          if (ab_test_mark) {
+            // if (AviviD.rec_module_abtest({
+            //     [k]: 0
+            //   })[k]) {
+            AviviD.create_block(k, v, settings);
+            //   AviviD.abtest_event_send(k, "likr_event_a", keys + "_" + location.href);
+            // } else {
+            //   AviviD.abtest_event_send(k, "likr_event_b", keys + "_" + location.href);
+            // }
+          } else if (new_abtest_result == true) {
+            console.log("group B");
+          } else {
+            AviviD.create_block(k, v, settings);
+          }
+        } else {
+          if (parseInt(v["preview_mode"]) == 1) {
+            if (url.indexOf("AviviD_debug_mode") != -1) {
+              AviviD.create_block(k, v, settings);
+            }
+          }
+        }
+      });
+      log = "match " + keys;
+    });
+  }
+  AviviD.console_logs(log);
+  return url_match;
+};
+
+
+new_abtest = function () {
+  if (AviviD.web_id != '') {
+    return false;
+  }
+  if ((typeof (AviviD["settings"]) == 'undefined') || (typeof (AviviD.ga_id) == 'undefined') || (AviviD.ga_id == '')) {
+    return false;
+  }
+
+  var time_range = (30 * 60 * 1000);
+  // check cookie
+  var same_id = true;
+  var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+  try {
+    gtag('get', AviviD.ga_id, 'client_id', function (id) {
+      current_id = id;
+      if (recorded_id == '') {
+        AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+        same_id = false;
+      } else {
+        if (recorded_id != current_id) {
+          AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+          same_id = false;
+        }
+      }
+    });
+  } catch (e) {
+    console.log(e);
+  }
+
+  // split abtest - noabtest
+  if ((AviviD.get_cookie_data('AviviD_abtest_on') == '') || (same_id == false)) {
+    rand = Math.random() * 100;
+    AviviD.set_cookie_data_by_seconds('AviviD_abtest_on', rand, time_range);
+  }
+  if (parseInt(AviviD.get_cookie_data('AviviD_abtest_on')) > 20) {
+    return false;
+  }
+
+  // split a - b
+  if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+    random_number = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+  } else {
+    random_number = Math.random() * 100;
+    AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_number, time_range);
+  }
+
+  if (random_number > 50) {
+    AviviD.gtm_event_send("abtest_a", "likr_ab", location.href);
+    AviviD.s3_event_send("abtest_a", "likr_ab", location.href);
+    return false;
+  } else {
+    AviviD.gtm_event_send("abtest_b", "likr_ab", location.href);
+    AviviD.s3_event_send("abtest_b", "likr_ab", location.href);
+    return true;
+  }
+};
+
+
+AviviD.check_ab_test_mark = function () {
+  var log = "ab test off!";
+  var return_value = false;
+  if (("ad_block_abtest_enabled" in AviviD["settings"]) &&
+    parseInt(AviviD.settings.ad_block_abtest_enabled) == 1) {
+    var start_time = AviviD.Date(AviviD["settings"]["ad_block_abtest_start_time"]);
+    var end_time = AviviD.Date(AviviD["settings"]["ad_block_abtest_end_time"]);
+    var now_time = new Date();
+    if (now_time >= start_time && now_time < end_time) {
+      log = "test on!";
+      return_value = true;
+    }
+  }
+  AviviD.console_logs(log);
+  return return_value;
+};
+AviviD.create_block = function (block_name, block_setting, origin_setting) {
+  var ajax_setting = AviviD.block_data_setting[block_name];
+  AviviD[block_name](block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.block_load_order = [];
+AviviD.block_insert_before = 0;
+AviviD.find_first_block = function () {
+  if (parseInt(AviviD.block_insert_before) == 0) {
+    return AviviD.block_load_order.at(-1);
+  } else {
+    return AviviD.block_load_order.at(0);
+  }
+}
+
+AviviD.get_ajax_data = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var return_data = "_";
+  if (AviviD.blod_mode == 1) {
+    ajax_setting["web_id"] = AviviD.blod_id_to_web_id;
+  }
+  jQuery.ajax({
+    type: ajax_setting["http_method"],
+    async: ajax_setting["async"],
+    data: ajax_setting["payload"],
+    url: ajax_setting["data_url"],
+    headers: ajax_setting["headers"],
+    crossDomain: true,
+    cache: true, //ajax_setting["cache"],
+    timeout: 3000, //ajax_setting["timeout"],
+    success: function (data) {
+      if (data != '' && data != '_') {
+        return_data = JSON.parse(data);
+        if (ajax_setting["async"]) {
+          var delay_time = (parseInt(block_setting["old_type_no"]) * 300);
+          setTimeout(function () {
+            AviviD[block_setting["tpl_render_function"]](block_name, return_data,
+              block_setting, origin_setting);
+          }, delay_time);
+        }
+      }
+    },
+    complete: function (XMLHttpRequest, textStatus) {
+      if (textStatus == "timeout") {
+        console.log(block_name + " ajax timeout!");
+      }
+    },
+    error: function (jqXHR, textStatus, errorThrown) {
+      console.log(block_name + " ajax error");
+      console.log("jqXHR: ", jqXHR);
+      console.log("textStatus: " + textStatus);
+      console.log("errorThrown: " + errorThrown);
+    }
+  });
+  return return_data;
+};
+AviviD.isMobileDevice = function () {
+  const mobileDevice = ['Android', 'webOS', 'iPhone', 'iPad',
+    'iPod', 'BlackBerry', 'Windows Phone'
+  ];
+  let isMobileDevice = mobileDevice.some(e => navigator.userAgent.match(e));
+  if (!isMobileDevice) {
+    if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 0) {
+      return true;
+    }
+  }
+  return isMobileDevice;
+};
+AviviD.get_top_domain = function get_top_domain() {
+  var domain = window.location.host;
+  var length = domain.split('.').length;
+  var domain_split_reverse = domain.split('.').reverse();
+  if (length <= '2') {
+    return domain;
+  } else if (length == '3') {
+    if (domain_split_reverse[1] === 'com') {
+      return domain;
+    } else {
+      return domain_split_reverse[1] + "." + domain_split_reverse[0];
+    }
+  } else if (length == '4') {
+    if (domain_split_reverse[0] === 'com') {
+      return domain_split_reverse[1] + "." + domain_split_reverse[0];
+    } else {
+      return domain_split_reverse[2] + "." + domain_split_reverse[1] + "." + domain_split_reverse[0];
+    }
+  } else {
+    return domain_split_reverse[2] + "." + domain_split_reverse[1] + "." + domain_split_reverse[0];
+  }
+};
+AviviD.get_cookie_data = function (cname) {
+  var name = cname + "=";
+  var ca = document.cookie.split(';');
+  for (var i = 0; i < ca.length; i++) {
+    var c = ca[i].trim();
+    if (c.indexOf(name) == 0) return c.substring(name.length, c.length);
+  }
+  return "";
+};
+AviviD.set_cookie_data = function (name, value, days) {
+  var domain = AviviD.get_top_domain();
+  var Days = days || 3650;
+  var exp = new Date();
+  exp.setTime(exp.getTime() + Days * 24 * 60 * 60 * 1000);
+  document.cookie = name + "=" + encodeURIComponent(value) +
+    ";expires=" + exp.toGMTString() +
+    ";domain=" + domain +
+    ";path=/";
+};
+AviviD.set_cookie_data_by_seconds = function (name, value, seconds) {
+  var domain = AviviD.get_top_domain();
+  var exp = new Date();
+  exp.setTime(exp.getTime() + seconds);
+  document.cookie = name + "=" + encodeURIComponent(value) +
+    ";expires=" + exp.toGMTString() +
+    ";domain=" + domain +
+    ";path=/";
+};
+AviviD.imp_event = {
+  "block_like": "guess_imp",
+  "block_other": "otherlike_imp",
+  "block_history": "footprint_imp",
+  "block_keyword": "keyword_word_hot_imp",
+  "block_uuid_keyword": "keyword_word_uuid_imp",
+  "block_other_keyword": "keyword_word_other_imp",
+  "block_sider_bar": "keyword_side_hot_imp",
+  "block_sider_bar_history": "keyword_side_footprint_imp"
+};
+AviviD.click_event = {
+  "block_keyword": "keyword_word_hot",
+  "block_uuid_keyword": "keyword_word_uuid",
+  "block_other_keyword": "keyword_word_other",
+  "block_sider_bar": "keyword_side_hot",
+  "block_sider_bar_history": "keyword_side_footprint",
+  "block_keyword_searchbar": "keyword_search"
+};
+AviviD.block_like = function (block_name, ajax_setting, block_setting, origin_setting) {
+
+  // abtest
+  var ab_test_mark = AviviD.check_ab_test_mark();
+  if(ab_test_mark == true){
+    AviviD.event_ga_id = AviviD.ga_id;
+    var time_range = AviviD.Date(AviviD["settings"]["ad_block_abtest_end_time"]) - new Date();
+    // var time_range = (30 * 60 * 1000); //30 minutes timeout as pseudo-session
+  
+    var same_id = true;
+    //check for id cookie
+    var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+    AviviD.abtest_id = '';
+    try {
+      gtag('get', AviviD.event_ga_id, 'client_id', function (id) {
+        current_id = id;
+        if (recorded_id == '') {
+          AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+          same_id = false;
+        } else {
+          if (recorded_id != current_id) {
+            AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+            same_id = false;
+          }
+        }
+      });
+    } catch (e) {
+      console.log(e);
+    }
+    // Uncomment if GA4Aviv
+    // gtag('get', AviviD.event_ga_id, 'session_id', function(id){
+    //   current_id = id;
+    // });
+    var random_value;
+    if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+      random_value = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+    } else {
+      random_value = Math.random() * 100;
+      AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_value, time_range);
+    }
+    if(AviviD.web_id == "pure17"){
+      var ratio = 50;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    } else {
+      var ratio = 33;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      in_b = ((parseInt(ratio) < random_value) && (random_value <= (parseInt(ratio) * 2))) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else if(in_b) {
+        AviviD.gtm_event_send("likr_event_b", "likr_event" ,location.href);
+        ajax_setting["data_url"] = "https://rhea-cache.advividnetwork.com/api/traceRecommendation_ab";
+        AviviD.random_rec = true;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    }
+  }
+
+  var avivid_foot_print = AviviD.get_cookie_data('AviviD_footprint');
+  // var lastFoot = "";
+  if (avivid_foot_print != "") {
+    avivid_foot_print = decodeURIComponent(avivid_foot_print);
+    avivid_foot_print = JSON.parse(avivid_foot_print).toString();
+    // lastFoot = avivid_foot_print[(avivid_foot_print.length - 1)];
+  }
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var payload = {
+    "web_id": AviviD.web_id,
+    "title": meta_title,
+    "url": meta_url,
+    // "foot_id": lastFoot,
+    "foot_id": avivid_foot_print,
+    "type": "belt1"
+  };
+  ajax_setting["payload"] = payload;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.block_large = function (block_name, ajax_setting, block_setting, origin_setting) {
+  // abtest
+  var ab_test_mark = AviviD.check_ab_test_mark();
+  if(ab_test_mark == true){
+    AviviD.event_ga_id = AviviD.ga_id;
+    var time_range = AviviD.Date(AviviD["settings"]["ad_block_abtest_end_time"]) - new Date();
+    // var time_range = (30 * 60 * 1000); //30 minutes timeout as pseudo-session
+  
+    var same_id = true;
+    //check for id cookie
+    var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+    AviviD.abtest_id = '';
+    try {
+      gtag('get', AviviD.event_ga_id, 'client_id', function (id) {
+        current_id = id;
+        if (recorded_id == '') {
+          AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+          same_id = false;
+        } else {
+          if (recorded_id != current_id) {
+            AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+            same_id = false;
+          }
+        }
+      });
+    } catch (e) {
+      console.log(e);
+    }
+    var random_value;
+    if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+      random_value = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+    } else {
+      random_value = Math.random() * 100;
+      AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_value, time_range);
+    }
+    if(AviviD.web_id == "pure17"){
+      var ratio = 50;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    } else {
+      var ratio = 33;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      in_b = ((parseInt(ratio) < random_value) && (random_value <= (parseInt(ratio) * 2))) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else if(in_b) {
+        AviviD.gtm_event_send("likr_event_b", "likr_event" ,location.href);
+        ajax_setting["data_url"] = "https://rhea-cache.advividnetwork.com/api/ecomLarge_ab";
+        AviviD.random_rec = true;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    }
+  }
+
+  var avivid_foot_print = AviviD.get_cookie_data('AviviD_footprint');
+  var footprint_id_str = decodeURIComponent(avivid_foot_print);
+  if(footprint_id_str != '') {
+    var item_data = JSON.parse(footprint_id_str);
+  } else {
+    var item_data = '';
+  }
+  
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var payload = {
+    "web_id": AviviD.web_id,
+    "title": meta_title,
+    "url": meta_url,
+    "history": item_data.toString(),
+  };
+  ajax_setting["payload"] = payload;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.block_keyword = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var cache_time = new Date().getHours();
+  ajax_setting["payload"] = {
+    "web_id": AviviD.web_id,
+    "cache_time": cache_time,
+    "title": meta_title,
+    "url": meta_url
+  }; /* Object.assign(obj1,obj2) */
+  ajax_setting["cache"] = true;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  ajax_setting["cache"] = false;
+};
+AviviD.block_uuid_keyword = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var cache_time = new Date().getHours();
+  ajax_setting["payload"] = {
+    "web_id": AviviD.web_id,
+    "cache_time": cache_time
+  };
+  ajax_setting["cache"] = true;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  ajax_setting["cache"] = false;
+};
+AviviD.block_other_keyword = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var cache_time = new Date().getHours();
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  ajax_setting["payload"] = {
+    "web_id": AviviD.web_id,
+    "cache_time": cache_time,
+    "title": meta_title,
+    "url": meta_url
+  };
+  ajax_setting["cache"] = true;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  ajax_setting["cache"] = false;
+};
+AviviD.block_other = function (block_name, ajax_setting, block_setting, origin_setting) {
+
+  // abtest
+  var ab_test_mark = AviviD.check_ab_test_mark();
+  if(ab_test_mark == true){
+    AviviD.event_ga_id = AviviD.ga_id;
+    var time_range = AviviD.Date(AviviD["settings"]["ad_block_abtest_end_time"]) - new Date();
+    // var time_range = (30 * 60 * 1000); //30 minutes timeout as pseudo-session
+  
+    var same_id = true;
+    //check for id cookie
+    var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+    AviviD.abtest_id = '';
+    try {
+      gtag('get', AviviD.event_ga_id, 'client_id', function (id) {
+        current_id = id;
+        if (recorded_id == '') {
+          AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+          same_id = false;
+        } else {
+          if (recorded_id != current_id) {
+            AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+            same_id = false;
+          }
+        }
+      });
+    } catch (e) {
+      console.log(e);
+    }
+    // Uncomment if GA4Aviv
+    // gtag('get', AviviD.event_ga_id, 'session_id', function(id){
+    //   current_id = id;
+    // });
+    var random_value;
+    if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+      random_value = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+    } else {
+      random_value = Math.random() * 100;
+      AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_value, time_range);
+    }
+    if(AviviD.web_id == "pure17"){
+      var ratio = 50;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    } else {
+      var ratio = 33;
+      in_a = (parseInt(ratio) >= random_value) ? true : false;
+      in_b = ((parseInt(ratio) < random_value) && (random_value <= (parseInt(ratio) * 2))) ? true : false;
+      if(in_a){
+        AviviD.gtm_event_send("likr_event_a", "likr_event" ,location.href);
+        AviviD.random_rec = false;
+      } else if(in_b) {
+        AviviD.gtm_event_send("likr_event_b", "likr_event" ,location.href);
+        ajax_setting["data_url"] = "https://rhea-cache.advividnetwork.com/api/traceRecommendation_ab";
+        AviviD.random_rec = true;
+      } else {
+        AviviD.gtm_event_send("likr_event_c", "likr_event" ,location.href);
+        return;
+      }
+    }
+  }
+
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var avivid_foot_print = AviviD.get_cookie_data('AviviD_footprint');
+  // var lastFoot = "";
+  if (avivid_foot_print != "") {
+    avivid_foot_print = decodeURIComponent(avivid_foot_print);
+    avivid_foot_print = JSON.parse(avivid_foot_print).toString();
+    // avivid_foot_print = JSON.parse(avivid_foot_print);
+    // lastFoot = avivid_foot_print[(avivid_foot_print.length - 1)];
+  }
+  var payload = {
+    "web_id": AviviD.web_id,
+    "title": meta_title,
+    "url": meta_url,
+    "foot_id": avivid_foot_print,
+    "type": "belt2"
+  };
+  ajax_setting["payload"] = payload;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.block_history = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": meta_title,
+    "url": decodeURIComponent(meta_url),
+    "type": "id"
+  };
+  ajax_setting["async"] = false;
+  ajax_setting["payload"] = payload;
+  var block_data = AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  var item_data = AviviD.get_product_items_for_block_history(block_data);
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": item_data.toString(),
+    "type": "item"
+  };
+  ajax_setting["async"] = true;
+  ajax_setting["payload"] = payload;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.block_sider_bar = function (block_name, ajax_setting, block_setting, origin_setting) {
+  ajax_setting["payload"] = {
+    "web_id": AviviD.web_id
+  };
+  ajax_setting["cache"] = true;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  ajax_setting["cache"] = false;
+};
+AviviD.get_history_for_new_sider_bar = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": meta_title,
+    "url": decodeURIComponent(meta_url),
+    "type": "id"
+  };
+  var reuse_block_name = "block_history";
+  ajax_setting = AviviD.block_data_setting[reuse_block_name];
+  ajax_setting["payload"] = payload;
+  ajax_setting["async"] = false;
+
+  if (AviviD.check_for_product_page() == 1) {
+    var history_block_data = AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  }
+
+  var item_data = AviviD.get_product_items_for_block_history(history_block_data);
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": item_data.toString(),
+    "type": "item"
+  };
+  ajax_setting["async"] = true;
+  ajax_setting["payload"] = payload;
+  block_setting["tpl_render_function"] = "new_sider_bar_history";
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.get_history_for_sider_bar = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": meta_title,
+    "url": decodeURIComponent(meta_url),
+    "type": "id"
+  };
+  var reuse_block_name = "block_history";
+  ajax_setting = AviviD.block_data_setting[reuse_block_name];
+  ajax_setting["payload"] = payload;
+  ajax_setting["async"] = false;
+  var history_block_data = AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  var item_data = AviviD.get_product_items_for_block_history(history_block_data);
+  var payload = {
+    "web_id": AviviD.web_id,
+    "data": item_data.toString(),
+    "type": "item"
+  };
+  ajax_setting["async"] = true;
+  ajax_setting["payload"] = payload;
+  block_setting["tpl_render_function"] = "sider_bar_history";
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+};
+AviviD.languages = "zh_TW";
+ AviviD.navigation_bar = function (block_name, block_data, block_setting, origin_setting) {
+  // var device = AviviD.isMobileDevice();
+  var device = false;
+  try {
+    var item_array = block_data["item_list"].split(",");
+
+    if(AviviD.web_id == 'familyapp'){
+      AviviD.random_sort = function(){
+        return Math.random() - 0.5;
+      };
+      item_array_head = item_array.slice(0,6);
+      item_array_tail = item_array.slice(6);
+      item_array_head.sort(AviviD.random_sort);
+      item_array_tail.sort(AviviD.random_sort);
+      item_array = item_array_head.concat(item_array_tail);
+    } else if(AviviD.random_rec == true){
+      AviviD.random_sort = function(){
+        return Math.random() - 0.5;
+      };
+      item_array.sort(AviviD.random_sort);
+    }
+
+  } catch (e) {
+    console.log(block_name + " data error!");
+    return false;
+  }
+
+  if (item_array[0] == '') {
+    console.log(block_name + " data empty!");
+    return false;
+  }
+
+  var data = block_data;
+  var bar_html = "";
+  var bar_width = AviviD.bar_setting["bar_width"];
+  var prod_item_width = AviviD.bar_setting["product_item_width"];
+  if (parseInt(block_setting["overwrite_bar_width"]) > 0) {
+    bar_width = parseInt(block_setting["overwrite_bar_width"]);
+    prod_item_width = bar_width / 4;
+  }
+  var bar_half_width = bar_width / 2;
+  var color = AviviD.bar_setting["title_text_color"];
+  if ("overwrite_color" in block_setting && block_setting["overwrite_color"] != "") {
+    color = block_setting["overwrite_color"];
+  }
+  var prod_name_text_height = AviviD.bar_setting["product_mobile_text_height"];
+  if ("overwrite_product_mobile_text_height" in block_setting &&
+    parseInt(block_setting["overwrite_product_mobile_text_height"]) > 0) {
+    prod_name_text_height = block_setting["overwrite_product_mobile_text_height"];
+  }
+  var title_str = AviviD.language_settings[AviviD.languages][block_name];
+  var bar_type = block_setting["old_type_no"];
+  var shift_right = block_setting["shift_right"] == undefined ? 0 : block_setting["shift_right"];
+
+  let shift_string = '';
+  if (shift_right != 0){
+    shift_string = "position: relative; left: " + shift_right + "px;";
+  }
+
+  var nav_r_arrow_image = "https://rhea-cache.advividnetwork.com/imagefile/arrowright.svg";
+  var force_image_style = "avivid_other_image";
+  var bar_top = 0;
+  var max_item_padding = 10;
+  var tag_id = '';
+  var currency = '$';
+  if (typeof (AviviD.currency) != 'undefined') {
+    currency = AviviD.currency;
+  }
+
+  switch (bar_type) {
+    case 1:
+      tag_id = 'avivid_recommend_tag';
+      break;
+    case 2:
+      tag_id = 'avivid_history_tag';
+      break;
+    case 3:
+      tag_id = 'avivid_other_tag';
+      break;
+  }
+  if ("overwrite_bar_top" in block_setting &&
+    parseInt(block_setting["overwrite_bar_top"]) != 0) {
+    bar_top = block_setting["overwrite_bar_top"];
+  }
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+  var show_price = 1;
+  if ("show_product_price" in AviviD.bar_setting &&
+    parseInt(AviviD.bar_setting["show_product_price"]) == 0) {
+    show_price = 0;
+  }
+    /* pc */
+    AviviD.row_width = prod_item_width * (item_array.length);
+    if (item_array.length < 4) {
+      AviviD.row_width = prod_item_width * 4;
+    }
+    AviviD["bar_scroll"][bar_type]["row_width"] = AviviD.row_width;
+    var item_width = prod_item_width - (max_item_padding * 2);
+    var prod_name_text_height = AviviD.bar_setting["product_pc_text_height"];
+    if ("overwrite_product_pc_text_height" in block_setting &&
+      parseInt(block_setting["overwrite_product_pc_text_height"]) > 0) {
+      prod_name_text_height = block_setting["overwrite_product_pc_text_height"];
+    }
+    bar_html = `<div id="` + tag_id + `" class="avivid_border" style="max-width:` + bar_width + `px; top:` + bar_top +`px; width:100%; display:block !important; `+ shift_string +`">
+                  <div class="avivid_title_text" style="background-color:` + color + `">` + title_str + `</div>
+                  <div id="avivid_bar_` + bar_type + `" class="avivid_row_bar" 
+                       style="max-width:` + AviviD.row_width + `px; transform: translateX(0px); overflow:auto;">
+                  </div>
+                  <div class="avivid_right_arrow_div">
+                    <img class="avivid_right_arrow" src="` + nav_r_arrow_image + `" 
+                         onclick="AviviD.move_rwd(1, jQuery('#` + tag_id + `').width()/2, jQuery('#` + tag_id + `').width(),` + bar_type + `)">
+                  </div>
+                  <div class="avivid_left_arrow_div">
+                    <img class="avivid_left_arrow" src="` + nav_r_arrow_image + `" 
+                         onclick="AviviD.move_rwd(0, jQuery('#` + tag_id + `').width()/2, jQuery('#` + tag_id + `').width(),` + bar_type + `)">
+                  </div>
+                </div>`;
+    bar_element = jQuery.parseHTML(bar_html);
+    var displayed_item = new Set();
+    for (let i = 0; i < item_array.length; i++) {
+      if (data[item_array[i]] !== undefined) {
+        if ((data[item_array[i]]['image'] &&
+            data[item_array[i]]['url'] &&
+            data[item_array[i]]['title'] &&
+            data[item_array[i]]['sale_price'] &&
+            data[item_array[i]]['price']) !== undefined) {
+          var pr = "";
+          var item_key = data[item_array[i]]['title'] + data[item_array[i]]['url'];
+          if(!displayed_item.has(item_key)){
+            displayed_item.add(item_key);
+            if (parseFloat(data[item_array[i]]['sale_price']) == 0) {
+              data[item_array[i]]['sale_price'] = data[item_array[i]]['price'];
+            }
+            var extra_css = "font-size: 13px;color: rgb(102, 102, 102);";
+            var avivid_item = `<div class="avivid_item" style="width:` + item_width + `px;" 
+                                    name="avivid_item" 
+                                    onclick="AviviD.click_href('` + data[item_array[i]]['url'] + `',` + bar_type + `);">
+                                 <div class="avivid_item_image">
+                                   <div class="avivid_other_image" 
+                                        style="background-image: url('` + data[item_array[i]]['image'] + `'); max-width: `+ item_width +`px; width: 25vw;"></div>                                           </div>
+                                 <div class="avivid_item_title" 
+                                      style="height:` + prod_name_text_height + `px;` + extra_css + `">` + data[item_array[i]]['title'] + `</div>
+                                 <div class="avivid_sale_price">` + currency + data[item_array[i]]['sale_price'] + `</div>` + pr + `</div>`;
+            jQuery(bar_element).children('#avivid_bar_' + bar_type).append(avivid_item);
+          } 
+        }
+      }
+    }
+    AviviD.navigation_bar_append(bar_element, tag_id, device, block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+
+  if (show_price == 0) {
+    jQuery(".avivid_sale_price").hide();
+  }
+  AviviD.block_load_order.push(block_name);
+  AviviD.block_insert_before = block_setting["css_html_insert_before"];
+  return true;
+};
+AviviD.navigation_bar_append = function(bar_element, tag_id, is_mobile_rec ,selector, force_append, insert_before){
+  if(jQuery("#"+tag_id).length > 0){
+    console.log(tag_id + ' already exists');
+    return 0;
+  }
+  console.log('try to insert ' + tag_id);
+  if (force_append) {
+    jQuery(selector).append(bar_element);
+  } else {
+    if (insert_before) {
+      jQuery(bar_element).insertBefore(selector);
+    } else {
+      jQuery(bar_element).insertAfter(selector);
+    }
+  }
+  if(jQuery("#"+tag_id).length == 0){
+    AviviD.block_retry += 1;
+    if(AviviD.block_retry < 11){
+      setTimeout(AviviD.navigation_bar_append, 500, bar_element, tag_id, is_mobile_rec, selector, force_append, insert_before);
+    }
+  } else if(is_mobile_rec){
+    switch (tag_id) {
+      case 'avivid_recommend_tag':
+        bar_type = 1;
+        break;
+      case 'avivid_history_tag':
+        bar_type = 2;
+        break;
+      case 'avivid_other_tag':
+        bar_type = 3;
+        break;
+    }
+    AviviD.mobile_move_v2(bar_type);
+  }
+};
+AviviD.button_bar = function (block_name, block_data, block_setting, origin_setting) {
+  var device = AviviD.isMobileDevice();
+  var search_width = document.body.clientWidth;
+  var icon_left = search_width - 30;
+  var color = AviviD.bar_setting["title_text_color"];
+  if ("overwrite_color" in block_setting && block_setting["overwrite_color"] != "") {
+    color = block_setting["overwrite_color"];
+  }
+  var shift_right = 0;
+  var title_str = AviviD.language_settings[AviviD.languages][block_name];
+  try {
+    if (parseInt(block_data["status"]) == 200) {
+      var data = block_data["data"];
+    } else {
+      console.log(block_name + " data error!");
+      return false;
+    }
+  } catch (e) {
+    console.log(block_name + " api connect error!");
+    return false;
+  }
+  var wid = AviviD.bar_setting["bar_width"];
+  var row = 0;
+  var search_image = "https://rhea-cache.advividnetwork.com/search_icon_1.png";
+  var search_title = AviviD.language_settings[AviviD.languages]["search_title_text"];
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+  if (device) {
+    /* mobile */
+    wid = search_width;
+    if (document.body.clientWidth > 600) {
+      /* tablet */
+      search_width = 300;
+      icon_left = 270;
+      wid = AviviD.bar_setting["bar_width"];
+      if (parseInt(block_setting["overwrite_bar_width"]) > 0) {
+        wid = parseInt(block_setting["overwrite_bar_width"]);
+      }
+    }
+  } else {
+    /* pc */
+    if (parseInt(block_setting["overwrite_bar_width"]) > 0) {
+      wid = parseInt(block_setting["overwrite_bar_width"]);
+    }
+    shift_right = block_setting["shift_right"] == undefined ? 0 : block_setting["shift_right"];
+  }
+  var bar_top = 0;
+  if ("overwrite_bar_top" in block_setting &&
+    parseInt(block_setting["overwrite_bar_top"]) > 0) {
+    bar_top = parseInt(block_setting["overwrite_bar_top"]);
+  }
+
+  var data_cnt = data.length;
+  console.log(data);
+  if (data[0] == '') {
+    console.log(block_name + " data empty!");
+    return false;
+  }
+
+  var bar_html = `<div id="search_bottom" style="width:` + wid + `px;left:` + shift_right + `px;top:` + bar_top + `px;display:block !important">
+                    <div class="avivid_keyword_title_text" 
+                         style="background-color:` + color + `">` + title_str + `</div>
+                      <div id="Avivid_search_keyword_bot_` + row + `" 
+                           name="bottom_search" style="position:relative;">
+                        <div id="Avivid_search_keyword_bot_searchArea">
+                          <input id="avivid_search_box_bottom" 
+                                 type="search" placeholder="` + search_title + `" 
+                                 class="avivid_search_box_bottom" style="" 
+                                 autocomplete="on" onsearch="AviviD.search_enter('bottom');" />
+                          <img src="` + search_image + `" class="avivid_search_box_bottom_icon" style="">
+                        </div>
+                      </div>
+                    </div>
+                  </div>`;
+  bar_element = jQuery.parseHTML(bar_html);
+  var key_content = "";
+  for (let i = 0; i < data_cnt; i++) {
+    var search_word = data[i];
+    key_content += `<div name="key_block" 
+                         class="avivid_keyword_item" 
+                         style="background-color:` + color + `" 
+                         onclick="AviviD.search_word_click('` + search_word + `','` + block_name + `')">` + search_word + `</div>`;
+  }
+  jQuery(bar_element).children('#Avivid_search_keyword_bot_' + row).append(key_content);
+  AviviD.navigation_bar_append(bar_element, "search_bottom", false, block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+  if (block_name in AviviD.imp_event) {
+    //AviviD.gtm_event_send(AviviD.imp_event[block_name],"likr_event",location.href);
+  }
+  AviviD.block_load_order.push(block_name);
+  AviviD.block_insert_before = block_setting["css_html_insert_before"];
+  return true;
+};
+AviviD.large_bar = function (block_name, block_data, block_setting, origin_setting) {
+  var device = AviviD.isMobileDevice();
+  try {
+    var item_array = block_data["item_list"].split(",");
+  } catch (e) {
+    console.log(block_name + " data error!");
+    return false;
+  }
+
+  if (item_array[0] == '') {
+    console.log(block_name + " data empty!");
+    return false;
+  }
+
+  var bar_html = "";
+  var bar_width = AviviD.bar_setting["bar_width"];
+  var prod_item_width = AviviD.bar_setting["product_item_width"];
+  if (parseInt(block_setting["overwrite_bar_width"]) > 0) {
+    bar_width = parseInt(block_setting["overwrite_bar_width"]);
+    prod_item_width = bar_width / 4;
+  }
+  var bar_half_width = bar_width / 2;
+  var color = AviviD.bar_setting["title_text_color"];
+  if ("overwrite_color" in block_setting && block_setting["overwrite_color"] != "") {
+    color = block_setting["overwrite_color"];
+  }
+  var prod_name_text_height = AviviD.bar_setting["product_mobile_text_height"];
+  if ("overwrite_product_mobile_text_height" in block_setting &&
+    parseInt(block_setting["overwrite_product_mobile_text_height"]) > 0) {
+    prod_name_text_height = block_setting["overwrite_product_mobile_text_height"];
+  }
+  var title_str = AviviD.language_settings[AviviD.languages][block_name];
+  var bar_type = block_setting["old_type_no"];
+  var shift_right = block_setting["shift_right"] == undefined ? 0 : block_setting["shift_right"];
+  var force_image_style = "avivid_other_image";
+  var bar_top = 0;
+  if ("overwrite_bar_top" in block_setting &&
+    parseInt(block_setting["overwrite_bar_top"]) != 0) {
+    bar_top = block_setting["overwrite_bar_top"];
+  }
+  var max_item_padding = 10;
+  var currency = '$';
+  if (typeof (AviviD.currency) != 'undefined') {
+    currency = AviviD.currency;
+  }
+  var tag_id = 'avivid_large_tag';
+  var show_price = 1;
+  if ("show_product_price" in AviviD.bar_setting &&
+  parseInt(AviviD.bar_setting["show_product_price"]) == 0) {
+    show_price = 0;
+  }
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+
+  if (device) {
+    // mobile
+    var mobile_width = document.body.clientWidth;
+    AviviD.row_width = (mobile_width - max_item_padding) / 2 * (item_array.length)
+    var row_wid = AviviD.row_width
+    if (bar_type == 2) {
+      AviviD.row_width_foot = (mobile_width - max_item_padding) / 2 * (item_array.length);
+      if ((item_array.length - 1) < 2) {
+        AviviD.row_width_foot = (mobile_width - max_item_padding) / 2 * 2
+      }
+      row_wid = AviviD.row_width_foot
+    }
+    AviviD.view_width = mobile_width - max_item_padding
+    var item_width = (mobile_width) / 2 - (max_item_padding * 2)
+    var bar_html = "";
+    var force_image_height = "";
+    if (document.body.clientWidth >= 600) {
+      /* tablet */
+      item_width = ((mobile_width) / 4) - (max_item_padding * 2);
+      force_image_height = "height:200px;";
+      bar_html = `<div id="` + tag_id + `" class="avivid_border" 
+                       style="width: 100%; left:` + shift_right + `px; top:` + bar_top + `px;display:block !important"> 
+                    <div class="avivid_title_text" style="background-color:` + color + `">` + title_str + `</div>
+                    <div id="avivid_bar_` + bar_type + `_0" class="avivid_row_bar_v2" 
+                         style="width: 100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_1" class="avivid_row_bar_v2" 
+                         style="width: 100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_2" class="avivid_row_bar_v2" 
+                         style="width: 100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_3" class="avivid_row_bar_v2" 
+                         style="width: 100%; display: contents;">
+                    </div>
+                  </div>`;
+    } else {
+      /* cellphone */
+      force_image_style = "avivid_mobile_image";
+      bar_html = `<div id="` + tag_id + `" class="avivid_border" style="width: auto;display:block !important">
+                    <div class="avivid_title_text" style="background-color:` + color + `">` + title_str + `</div>
+                    <div id="avivid_bar_` + bar_type + `_0" class="avivid_row_bar_v2" 
+                         style="width:  100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_1" class="avivid_row_bar_v2" 
+                         style="width:  100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_2" class="avivid_row_bar_v2" 
+                         style="width:  100%; display: contents;">
+                    </div>
+                    <div id="avivid_bar_` + bar_type + `_3" class="avivid_row_bar_v2" 
+                         style="width:  100%; display: contents;">
+                    </div>
+                  </div>`;
+    }
+    bar_element = jQuery.parseHTML(bar_html);
+    for (let i = 0; i < 16; i++) {
+      target_row = parseInt(i / 4);
+      if (block_data[item_array[i]] !== undefined) {
+        if ((block_data[item_array[i]]['image'] &&
+            block_data[item_array[i]]['url'] &&
+            block_data[item_array[i]]['title'] &&
+            block_data[item_array[i]]['sale_price'] &&
+            block_data[item_array[i]]['price']) !== undefined) {
+          var pr = "";
+          /*if (data[item_array[i]]['sale_price'] != data[item_array[i]]['price']){*/
+          /*pr = `<div class="avivid_price">$`+data[item_array[i]]['price']+`</div>`;*/
+          /*}*/
+          if (parseFloat(block_data[item_array[i]]['sale_price']) == 0) {
+            block_data[item_array[i]]['sale_price'] = block_data[item_array[i]]['price'];
+          }
+          var extra_css = "font-size: 13px;color: rgb(102, 102, 102);";
+          var avivid_item = `<div class="avivid_item" 
+                                  style="width:` + item_width + `px;" 
+                                  name="avivid_item" 
+                                  onclick="AviviD.click_href('` + block_data[item_array[i]]['url'] + `',` + bar_type + `);">
+                               <div class="avivid_item_image" style="text-align: center;">
+                                 <div class="` + force_image_style + `" 
+                                      style="background-image: url('` + block_data[item_array[i]]['image'] + `');` + force_image_height + `">
+                                 </div>
+                               </div>
+                               <div class="avivid_mob_item_title" 
+                                    style="height:` + prod_name_text_height + `px;` + extra_css + `">` + block_data[item_array[i]]['title'] + `</div>
+                                 <div class="avivid_sale_price">` + currency + block_data[item_array[i]]['sale_price'] + `</div>` + pr + `</div>`;
+          jQuery(bar_element).children('#avivid_bar_' + bar_type + '_' + target_row).append(avivid_item)
+        }
+      }
+    }
+    AviviD.navigation_bar_append(bar_element, tag_id, false, block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+  } else {
+    // pc
+    AviviD.row_width = prod_item_width * 4;
+    var extra_css = "transform: translateX(0px);";
+    var item_width = prod_item_width - (max_item_padding * 2);
+    var prod_name_text_height = AviviD.bar_setting["product_pc_text_height"];
+    if ("overwrite_product_pc_text_height" in block_setting &&
+      parseInt(block_setting["overwrite_product_pc_text_height"]) > 0) {
+      prod_name_text_height = block_setting["overwrite_product_pc_text_height"];
+    }
+    bar_html = `<div id="` + tag_id + `" class="avivid_border" style="width:` + bar_width + `px; left:` + shift_right + `px; top:` + bar_top + `px;display:block !important">
+                  <div class="avivid_title_text" style="background-color:` + color + `">` + title_str + `</div>
+                  <div id="avivid_bar_` + bar_type + `_0" class="avivid_row_bar" 
+                       style="width:` + AviviD.row_width + `px;` + extra_css + `">
+                  </div>
+                  <div id="avivid_bar_` + bar_type + `_1" class="avivid_row_bar" 
+                       style="width:` + AviviD.row_width + `px;` + extra_css + `">
+                  </div>
+                  <div id="avivid_bar_` + bar_type + `_2" class="avivid_row_bar" 
+                       style="width:` + AviviD.row_width + `px;` + extra_css + `">
+                  </div>
+                  <div id="avivid_bar_` + bar_type + `_3" class="avivid_row_bar" 
+                       style="width:` + AviviD.row_width + `px;` + extra_css + `">
+                  </div>
+                </div>`;
+    bar_element = jQuery.parseHTML(bar_html);
+    for (let i = 0; i < 16; i++) {
+      target_row = parseInt(i / 4);
+      if (block_data[item_array[i]] !== undefined) {
+        if ((block_data[item_array[i]]['image'] &&
+            block_data[item_array[i]]['url'] &&
+            block_data[item_array[i]]['title'] &&
+            block_data[item_array[i]]['sale_price'] &&
+            block_data[item_array[i]]['price']) !== undefined) {
+          if (parseFloat(block_data[item_array[i]]['sale_price']) == 0) {
+            block_data[item_array[i]]['sale_price'] = block_data[item_array[i]]['price'];
+          }
+          var extra_css = "font-size: 13px;color: rgb(102, 102, 102);";
+          var avivid_item = `<div class="avivid_item" style="width:` + item_width + `px;" 
+                                  name="avivid_item" 
+                                  onclick="AviviD.click_href('` + block_data[item_array[i]]['url'] + `',` + bar_type + `);">
+                               <div class="avivid_item_image">
+                                 <div class="avivid_other_image" 
+                                      style="background-image: url('` + block_data[item_array[i]]['image'] + `')"></div>                                           </div>
+                               <div class="avivid_item_title" 
+                                    style="height:` + prod_name_text_height + `px;` + extra_css + `">` + block_data[item_array[i]]['title'] + `</div>
+                               <div class="avivid_sale_price">` + currency + block_data[item_array[i]]['sale_price'] + `</div></div>`;
+          jQuery(bar_element).children('#avivid_bar_' + bar_type + '_' + target_row).append(avivid_item);
+        }
+      }
+    }
+    AviviD.navigation_bar_append(bar_element, tag_id, false, block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+  }
+
+  if (show_price == 0) {
+    jQuery(".avivid_sale_price").hide();
+  }
+  AviviD.block_load_order.push(block_name);
+  AviviD.block_insert_before = block_setting["css_html_insert_before"];
+
+  imp_event = {
+    "web_id": AviviD.web_id,
+    "uuid": AviviD.uuid,
+    "block_name": 'block_large',
+    "timestamp": Date.now(),
+  }
+  AviviD_tracking_data_block_log.construct(imp_event);
+
+  return true;
+};
+AviviD.new_sider_bar = function (block_name, block_data, block_setting, origin_setting) {
+  AviviD.sider_bar_css(origin_setting); /* css loading */
+  var device = AviviD.isMobileDevice();
+
+  var title_str = AviviD.language_settings[AviviD.languages][block_name];
+  var viewed = AviviD.language_settings[AviviD.languages]["viewed_text"];
+
+  var more_reading = AviviD.language_settings[AviviD.languages]["more_reading_text"];
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+  var keyword_module = '';
+  var keyword_dialog_module = '';
+  try {
+    var data = block_data["data"];
+    data.forEach(function (element) {
+      //2021-07-07 Jonathan 新v3 API測試
+      keyword_module += `
+        <li class="sider_bar_keyword" 
+            data-url="` + AviviD.item_page_domain + AviviD.web_id + `/` + element + `"
+            onclick="AviviD.search_word_click('` + element + `','` + block_name + `');">` + element + `</li>`;
+      keyword_dialog_module += `
+        <div class="sider_bar_dialog_keyword"
+            data-url="` + AviviD.item_page_domain + AviviD.web_id + `/` + element + `"
+            onclick="AviviD.search_word_click('` + element + `','` + block_name + `');">` + element + `</div>`;
+    });
+  } catch (e) {
+    AviviD.console_logs("sider bar keyword data error");
+    return false;
+  }
+  var search_input = `<input id="sider_bar_search_input"
+                     type="search"
+                     placeholder="` + more_reading + `"
+                     maxlength="20"
+                     autocomplete="off"
+                     onsearch="AviviD.search_enter('new_sider');"
+                     onfocus="this.placeholder = ''"
+                     onblur="this.placeholder = '` + more_reading + `'" />`;
+  if (device) {
+    search_input = `<input id="sider_bar_search_input"
+                     type="search"
+                     placeholder="` + more_reading + `"
+                     maxlength="20"
+                     autocomplete="off"
+                     onclick="AviviD.show_seach_map();" 
+                     />`;
+  }
+  var color = AviviD.bar_setting.title_text_color;
+  if ("overwrite_color" in block_setting && block_setting["overwrite_color"] != "") {
+    color = block_setting["overwrite_color"];
+  }
+  var bar_html = `
+    <div id="sider_bar_wrapper" style="display:none;">
+      <div id="sider_bar_arrow_btn" sn="0" op="0" 
+           class="sider_bar_switchBtn_transform" style="background-color:` + color + `;"
+           onclick="AviviD.switch_sider_bar_arrow_btn();">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 11.38">
+          <defs><style>.cls-1{fill:#fff;}</style></defs>
+          <g id="imgs_2" data-name="imgs_2">
+            <g id=imgs_1-2" data-name="imgs_1">
+              <polygon class="cls-1"
+               points="14 5.69 4.57 0 4.57 2.75 0 0 0 11.38 4.57 8.62 4.57 11.38 14 5.69" />
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="clear"></div>
+      <div class="sider_bar_tab_wrapper">
+        <ul class="sider_bar_tab_nav">
+          <li id="sider_bar_tab_nav_1" sn="1" class="sider_tab" 
+              onclick="AviviD.switch_sider_bar_tab(1);" style="background-color:` + color + `;">` + title_str + `</li>
+          <li id="sider_bar_tab_nav_2" sn="2" class="sider_tab" style="display:none; background-color:` + color + `;"
+              onclick="AviviD.switch_sider_bar_tab(2);">` + viewed + `</li>
+        </ul>
+        <div id="sider_bar_tab_area_1" class="sider_bar_tab_content">
+          <ul class="sider_bar_like">
+            <li class="sider_like_title">` + title_str + `</li>
+            <li>` + search_input + `</li>` + keyword_module + `
+          </ul>
+        </div>
+        <div id="sider_bar_tab_area_2" class="sider_bar_tab_content">
+        </div>
+      </div>
+    </div>
+    <div class="sider_bar_search_dialog_wrapper">
+      <div class="sider_bar_dialog_space_wrapper"></div>
+      <div class="sider_bar_dialog_closed_wrapper">
+        <div class="sider_bar_dialog_closed" onclick="AviviD.close_search_map();"></div>
+      </div>
+      <div class="sider_bar_dialog_search_wrapper">
+        <input id="sider_bar_dialog_search_input" 
+               type="search" 
+               placeholder="` + more_reading + `" 
+               maxlength="20" 
+               autocomplete="off" 
+               onsearch="AviviD.search_enter('new_sider_dialog');"
+               onfocus="this.placeholder = ''"
+               onblur="this.placeholder = '` + more_reading + `'" />
+        <div class="sider_bar_dialog_search_btn" 
+             onclick="AviviD.search_enter('new_sider_dialog');"></div>
+      </div>
+      <div class="sider_bar_dialog_keyword_wrapper">` + keyword_dialog_module + `</div>
+    </div>`;
+  jQuery("#sider_bar_wrapper").remove(); /* remove old element */
+  if (keyword_module != "") {
+    jQuery(block_setting["css_selector"]).append(bar_html);
+    setTimeout(function () {
+      jQuery("#sider_bar_wrapper").show();
+      AviviD.get_history_for_new_sider_bar(block_name, {}, block_setting, origin_setting);
+    }, 1000);
+    //AviviD.get_history_for_new_sider_bar(block_name,{},block_setting,origin_setting);
+    if (block_name in AviviD.imp_event) {
+      //AviviD.gtm_event_send(AviviD.imp_event[block_name],"likr_event",location.href);
+    }
+  }
+  return true;
+};
+AviviD.sider_bar = function (block_name, block_data, block_setting, origin_setting) {
+  AviviD.sider_bar_css(origin_setting); /* css loading */
+  var device = AviviD.isMobileDevice();
+  var title_str = AviviD.language_settings[AviviD.languages][block_name];
+  var more_reading = AviviD.language_settings[AviviD.languages]["more_reading_text"];
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+  var keyword_module = '';
+  try {
+    var data = block_data["data"];
+    data.forEach(function (element) {
+      //2021-07-07 Jonathan 新v3 API測試
+      keyword_module += `
+        <div data-url="` + AviviD.item_page_domain + AviviD.web_id + `/` + element + `" 
+            onclick="AviviD.search_word_click('` + element + `','` + block_name + `')">` + element + `</div>`;
+    });
+  } catch (e) {
+    AviviD.console_logs("sider bar keyword data error");
+    return false;
+  }
+  var bar_html = `
+        <div id="SearchKeywordSide">
+          <div id="SearchKeywordSide-switchBtn" 
+               data-status="1" 
+               onclick="AviviD.sidebarSwitchBtn();">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 11.38">
+              <defs><style>.cls-1{fill:#fff;}</style></defs>
+              <title>雙箭頭</title>
+              <g id="圖層_2" data-name="圖層 2">
+                <g id="圖層_1-2" data-name="圖層 1">
+                  <polygon class="cls-1" 
+                   points="14 5.69 4.57 0 4.57 2.75 0 0 0 11.38 4.57 8.62 4.57 11.38 14 5.69" />
+                </g>
+              </g>
+            </svg>
+          </div>
+          <div id="SearchKeywordSide-up-tag" class="disappear search_sider_bar"
+               onclick="AviviD.sidebarSwitchBtn();">` + title_str + `</div>
+          <div id="SearchKeywordSide-up">
+            <form action id="SearchKeywordSide-up-searchBar">
+              <h4>` + title_str + `</h4>
+              <input id="SearchKeywordSide-up-searchBar-input" type="search" 
+                     name="" aria-label="" placeholder="` + more_reading + `" 
+                     maxlength="20" autocomplete="off" 
+                     onsearch="AviviD.search_enter('sider');" />
+              <div id="SearchKeywordSide-up-searchBar-keyword">` + keyword_module + `</div>
+            </form>
+            <div id="SearchKeywordSide-keyword"></div>
+          </div>
+        </div>`;
+  jQuery("#SearchKeywordSide").remove(); /* remove old element */
+  if (keyword_module != "") {
+    jQuery(block_setting["css_selector"]).append(bar_html);
+    AviviD.get_history_for_sider_bar(block_name, {}, block_setting, origin_setting);
+    if ("autoCloseIfWidth" in AviviD.bar_setting &&
+      window.innerWidth <= parseInt(AviviD.bar_setting['autoCloseIfWidth'])) {
+      AviviD.sidebarSwitchBtn(1);
+    }
+    if (block_name in AviviD.imp_event) {
+      //AviviD.gtm_event_send(AviviD.imp_event[block_name],"likr_event",location.href);
+    }
+  }
+  return true;
+};
+AviviD.new_sider_bar_history = function (block_name, block_data, block_setting, origin_setting) {
+  var device = AviviD.isMobileDevice();
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+
+  block_setting["tpl_render_function"] = "new_sider_bar";
+
+  var item_module = "";
+  var viewed = AviviD.language_settings[AviviD.languages]["viewed_text"];
+  var product_viewed = AviviD.language_settings[AviviD.languages]["product_viewed_text"];
+  var force_show_mark = 0;
+  var default_show_mark = 0;
+  try {
+    var test_data = block_data;
+    force_show_mark = 1;
+    jQuery.each(test_data, function (key, value) {
+      if (key != 'item_list') {
+        item_module += `
+          <dt class="sider_bar_dt_wrapper" onclick="AviviD.click_href('` + value['url'] + `',0);">
+            <img class="sider_bar_image" src="` + value['image'] + `">
+          </dt>
+          <dd class="sider_bar_product_title">` + value['title'] + `</dd>`;
+      }
+    });
+  } catch (e) {
+    AviviD.console_logs("sider bar history data error");
+  }
+  if (item_module != "") {
+    var bar_html = `
+      <ul class="sider_bar_like">
+        <li class="sider_like_title">` + viewed + `</li>
+      </ul>
+      <div class="sider_bar_history_wrapper">
+        <div id="sider_bar_product_up" onclick="AviviD.sider_bar_product_move('up');"></div>
+        <div class="sider_bar_product_wrapper" id="sider_bar_product_wrapper">
+          <dl class="sider_bar_product_list">` + item_module + `</dl>
+        </div>
+        <div id="sider_bar_product_down" onclick="AviviD.sider_bar_product_move('down');"></div>
+        <div class="sider_bar_space"></div>
+      </div>`;
+    jQuery("#sider_bar_tab_area_2").append(bar_html);
+    jQuery("#sider_bar_tab_nav_2").show();
+  }
+  if ("autoCloseIfWidth" in AviviD.bar_setting &&
+    window.innerWidth >= parseInt(AviviD.bar_setting['autoCloseIfWidth'])) {
+    AviviD.switch_sider_bar_arrow_btn();
+    default_show_mark = 1;
+  }
+  block_name = "block_sider_bar_history";
+  if (block_name in AviviD.imp_event) {
+    //AviviD.gtm_event_send(AviviD.imp_event[block_name],"likr_event",location.href);
+  }
+  if (default_show_mark == 0) {
+    AviviD.force_display_new_sider_bar(force_show_mark);
+  }
+  return true;
+};
+AviviD.sider_bar_history = function (block_name, block_data, block_setting, origin_setting) {
+  var device = AviviD.isMobileDevice();
+  AviviD.console_logs("device : " + device + " html type : " + block_setting["tpl_render_function"]);
+  var item_module = "";
+  var viewed = AviviD.language_settings[AviviD.languages]["viewed_text"];
+  var product_viewed = AviviD.language_settings[AviviD.languages]["product_viewed_text"];
+  var force_show_mark = 0;
+  var default_show_mark = 1;
+  try {
+    var test_data = block_data;
+    force_show_mark = 1;
+    jQuery.each(test_data, function (key, value) {
+      if (key != 'item_list') {
+        item_module += `
+          <div class="carouselItem" onclick="AviviD.click_href('` + value['url'] + `',0);"
+               data-url="` + value['url'] + `">
+            <div class="carouselItem-up">
+              <img src="` + value['image'] + `" alt="" />
+            </div>
+            <div class="carouselItem-down">` + value['title'] + `</div>
+          </div>`;
+      }
+    });
+  } catch (e) {
+    AviviD.console_logs("sider bar history data error");
+  }
+  AviviD.console_logs(item_module);
+  if (item_module != "") {
+    var bar_html = `<div id="SearchKeywordSide-down-tag"
+                         class="disappear search_sider_bar" 
+                         onclick="AviviD.sidebarSwitchBtn();">` + viewed + `</div>
+                      <div id="SearchKeywordSide-down">
+                        <div id="SearchKeywordSide-down-history">
+                          <h4>` + product_viewed + `</h4>
+                          <div id="SearchKeywordSide-down-history-carousel">
+                            <div id="carouselSwitchUp" onclick="AviviD.carouselMove('up');"></div>
+                            <div id="carouselContent">` + item_module + `</div>
+                            <div id="carouselSwitchDown" onclick="AviviD.carouselMove('down');"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>`;
+    jQuery(bar_html).insertAfter("#SearchKeywordSide-up");
+  }
+  if ("autoCloseIfWidth" in AviviD.bar_setting &&
+    window.innerWidth <= parseInt(AviviD.bar_setting['autoCloseIfWidth'])) {
+    AviviD.sidebarSwitchBtn(1);
+    default_show_mark = 0;
+  }
+  block_name = "block_sider_bar_history";
+  if (block_name in AviviD.imp_event) {
+    //AviviD.gtm_event_send(AviviD.imp_event[block_name],"likr_event",location.href);
+  }
+  if (default_show_mark == 0) {
+    AviviD.force_display_sider_bar(force_show_mark);
+  }
+  return true;
+};
+AviviD.force_display_sider_bar = function (show_mark) {
+  var cookie_name = "AviviD_display_sider_bar";
+  var cookie_value = AviviD.get_cookie_data(cookie_name);
+  var show_seconds = 3000; //ms
+  AviviD.console_logs("sider bar display cookie : " + cookie_value);
+  if (cookie_value == "") {
+    if (show_mark == 1) {
+      AviviD.set_cookie_data(cookie_name, "1", 1);
+      AviviD.sidebarSwitchBtn();
+      setTimeout(function () {
+        AviviD.sidebarSwitchBtn(1);
+      }, show_seconds);
+    }
+  }
+  return true;
+};
+AviviD.force_display_new_sider_bar = function (show_mark) {
+  var cookie_name = "AviviD_display_sider_bar";
+  var cookie_value = AviviD.get_cookie_data(cookie_name);
+  var show_seconds = 3000; //ms
+  AviviD.console_logs("sider bar display cookie : " + cookie_value);
+  if (cookie_value == "") {
+    if (show_mark == 1) {
+      AviviD.set_cookie_data(cookie_name, "1", 1);
+      AviviD.switch_sider_bar_arrow_btn();
+      setTimeout(function () {
+        AviviD.switch_sider_bar_arrow_btn();
+      }, show_seconds);
+    }
+  }
+  return true;
+};
+AviviD.sidebarSwitchBtn = function (close_flag) {
+  close_flag = (typeof close_flag !== 'undefined') ? close_flag : 0;
+  var status = jQuery('#SearchKeywordSide-switchBtn').data('status'); // status: 1開啟,  0收合
+  if (status == 1 || close_flag == 1) {
+    /* close */
+    jQuery('#SearchKeywordSide-switchBtn').addClass('SearchKeywordSide-switchBtn-transform');
+    jQuery('#SearchKeywordSide-up, #SearchKeywordSide-down').addClass('disappear');
+    jQuery('#SearchKeywordSide-up-tag, #SearchKeywordSide-down-tag').removeClass('disappear');
+    jQuery('#SearchKeywordSide').addClass('SearchKeywordSide-closed');
+    jQuery('#SearchKeywordSide-switchBtn').data('status', 0);
+  } else {
+    /* open */
+    jQuery('#SearchKeywordSide-switchBtn').removeClass('SearchKeywordSide-switchBtn-transform');
+    jQuery('#SearchKeywordSide-up-tag, #SearchKeywordSide-down-tag').addClass('disappear');
+    jQuery('#SearchKeywordSide').removeClass('SearchKeywordSide-closed');
+    jQuery('#SearchKeywordSide-up, #SearchKeywordSide-down').removeClass('disappear');
+    jQuery('#SearchKeywordSide-switchBtn').data('status', 1);
+  }
+};
+AviviD.carouselMove = function (choose) {
+  var selector = jQuery("#carouselContent");
+  var current_position = selector.scrollTop();
+  var offset = selector.height();
+  var scroll_dis = {
+    "up": current_position - offset,
+    "down": current_position + offset
+  };
+  selector.stop().animate({
+    scrollTop: scroll_dis[choose]
+  }, 200);
+};
+AviviD.s3_event_send = function (event_name, event_category, event_label) {
+  // get variables
+  let ga_id = (AviviD.get_cookie_tracking('_ga') != "NaN") ? AviviD.get_cookie_tracking('_ga') : AviviD.get_cookie_tracking('gaClientId');
+  let uuid = AviviD.get_cookie_tracking('AviviD_uuid');
+  let fb_id = AviviD.get_cookie_tracking('_fbp');
+  let ip = (AviviD.clientIP === undefined) ? "_" : AviviD.clientIP;
+  // make data array
+  event_info = {
+    "eventCategory": event_category,
+    "eventAction": event_name,
+    "eventLabel": event_label,
+    "s_id": AviviD.record_user == undefined ? '' : AviviD.record_user.s_id, // current session
+    "s_idl": AviviD.record_user == undefined ? '' : AviviD.record_user.s_idl, // previous session
+    "dv": AviviD.record_user == undefined ? '' : AviviD.record_user.dv, // device: int
+    "ul": AviviD.record_user == undefined ? '' : AviviD.record_user.ul, // referrer url
+    "un": AviviD.record_user == undefined ? '' : AviviD.record_user.un, // current url
+  };
+  let tracking_data = {
+    'web_id': AviviD.web_id,
+    'uuid': uuid,
+    'ga_id': ga_id,
+    'fb_id': fb_id,
+    'ip': ip,
+    'timestamp': Date.now(),
+    "behavior_type": "likrTracking",
+    'event_type': event_name,
+    "click_info": event_info,
+  };
+  // send to s3
+  AviviD.tracking_data_aws_put.construct(tracking_data);
+};
+
+AviviD_tracking_data_block_log = {
+  debug_mode: 0,
+  /** Based Setting START **/
+  sdkSrc: 'https://avivid.likr.tw/sample/aws-sdk-AviviD-min-1.000.3.js',
+  region: 'ap-southeast-1', // 區域
+  deliveryStreamName: 'PUT-S3-elephant-ec', // data stream名稱
+
+  firehose: '',
+  credentialsStatus: false,
+
+  errorFlag: false,
+  errorMsg: '',
+  /** Based Setting END **/
+  /** Method START **/
+  /**
+   * @todo 檢查aws sdk有無載入並執行主程式
+   * @param {Object} tracking_data
+   */
+  construct: function (tracking_data) {
+      if (typeof (AviviD_AWS) === 'undefined') {
+          //console.log('執行aws sdk載入');
+          var script = document.createElement('script');
+          script.src = this.sdkSrc;
+          document.head.appendChild(script);
+          script.onload = function () {
+              //console.log('aws sdk載入完畢');
+              AviviD_tracking_data_block_log.main(tracking_data);
+          };
+      } else {
+          AviviD_tracking_data_block_log.main(tracking_data);
+      }
+  },
+  /**
+   * @todo 主程式workflow
+   * @param {Object} tracking_data
+   */
+  main: function (tracking_data) {
+      /** CHECKING DEBUG MODE **/
+      if (window.location.href.indexOf('AviviD_debug_mode=1') != -1) {
+          this.debug_mode = 1;
+      }
+      /** Step1 確認認證狀況 若沒有就執行認證 **/
+      if (!this.credentialsStatus) {
+          //console.log('執行aws 認證');
+          this.credentials_init();
+      }
+      /** Step2 確認firehose初始化狀況 若無則執行初始化 **/
+      if (this.firehose == '') {
+          //console.log('執行aws firehose初始化');
+          this.firehose = new AviviD_AWS.Firehose();
+      }
+      /** Step3 執行資料處理 **/
+      //console.log('執行aws firehose params處理');
+      data_prepared = this.prepare_data(tracking_data);
+      if (this.debug_mode == 1) {
+          AviviD.console('The Data before putting in firehose datastream:');
+          AviviD.console(data_prepared);
+      }
+      /** Step4 Put資料 **/
+      //console.log('執行aws firehose params put');
+      this.firehose_put_data(data_prepared);
+  },
+  /**
+   * @todo aws認證
+   */
+  credentials_init: function () {
+      AviviD_AWS.config.region = this.region; // 區域
+      ai = 'AKIATBR2IINU4CF5ZRBM';
+      sa = 'xMMa84xg4yKM8ErQbtou+v/62q16+OYDNyZMkPoT';
+      AviviD_AWS.config.credentials = new AviviD_AWS.Credentials(ai, sa, sessionToken = null);
+      AviviD_AWS.config.maxRetries = 5;
+      AviviD_AWS.config.credentials.get(function (err) {
+          if (err) { //如果認證錯誤
+              console.error(err);
+              AviviD_tracking_data_block_log.errorFlag = true;
+              AviviD_tracking_data_block_log.errorMsg = err;
+              return;
+          } else { //認證通過
+              AviviD_tracking_data_block_log.credentialsStatus = true;
+              AviviD_tracking_data_block_log.errorFlag = false;
+              AviviD_tracking_data_block_log.errorMsg = '';
+              return;
+          }
+      });
+  },
+  /**
+   * @todo put data to firehose
+   * @param {Object} params
+   */
+  firehose_put_data: function (params) {
+      this.firehose.putRecord(params, function (err, data) {
+          if (err) {
+              AviviD_tracking_data_block_log.errorFlag = true;
+              AviviD_tracking_data_block_log.errorMsg = err;
+              return;
+          } else {
+              AviviD_tracking_data_block_log.errorFlag = false;
+              AviviD_tracking_data_block_log.errorMsg = '';
+              return;
+          }
+      });
+  },
+  /**
+   * @todo data formate/prepare
+   * @param {Object} tracking_data
+   */
+  prepare_data: function (tracking_data) {
+      function replacer(key, value) {
+          if (typeof value === 'undefined') {
+              return '_';
+          } else if (key == 'uuid') {
+              var reg = /^[a-zA-z0-9]{8}-[a-zA-z0-9]{4}-[a-zA-z0-9]{4}-[a-zA-z0-9]{4}-[a-zA-z0-9]{12}$/;
+              if (value.match(reg)) {
+                  return value;
+              } else {
+                  return '_';
+              }
+          } else {
+              return value;
+          }
+      }
+      return {
+          Record: {
+            Data: JSON.stringify(tracking_data, replacer)
+          },
+          DeliveryStreamName: this.deliveryStreamName,
+      };
+  }
+  /** Method END **/
+}
+
+AviviD.search_word_click = async function (word, block_type) {
+  // search engine ABtest
+  const abtest_flag = AviviD.abtest_web_id.includes(AviviD.web_id);
+  if(abtest_flag){
+    var end_data = {};
+    let session_promise = new Promise(resolve => {
+      gtag('get', AviviD.ga_id, 'session_id', resolve);
+    });
+
+    await session_promise.then((session_id) => {
+      return AviviD.search_engine_abtest(session_id);
+    }).then((data)=>{
+      end_data = data;
+    });
+  }
+
+  if (block_type in AviviD.click_event) {
+    AviviD.gtm_event_send(AviviD.click_event[block_type], "likr_event", word);
+    AviviD.s3_event_send(AviviD.click_event[block_type], "likr_event", word);
+  }
+  //2021-07-07 Jonathan 新v3 API測試
+  url = AviviD.new_redirect_url_by_source(AviviD.click_event[block_type], word);
+
+  url = new URL(url);
+  // add query parameters
+  ga_id = (AviviD.get_cookie_tracking('_ga') != "NaN") ? AviviD.get_cookie_tracking('_ga') : AviviD.get_cookie_tracking('gaClientId');
+  uuid = AviviD.get_cookie_tracking('AviviD_uuid');
+  fb_id = AviviD.get_cookie_tracking('_fbp');
+  ip = (AviviD.clientIP === undefined) ? "_" : AviviD.clientIP;
+  s_id = AviviD.record_user == undefined ? '_' : AviviD.record_user.s_id; // current session
+  s_idl = AviviD.record_user == undefined ? '_' : AviviD.record_user.s_idl; // previous session
+  dv = AviviD.record_user == undefined ? '_' : AviviD.record_user.dv; // device: int
+  ul = AviviD.record_user == undefined ? '_' : AviviD.record_user.ul; // referrer url
+  un = AviviD.record_user == undefined ? '_' : AviviD.record_user.un; // current url
+
+  footprint = AviviD.get_cookie_data('AviviD_footprint') == "" ? '[]' : decodeURIComponent(AviviD.get_cookie_data('AviviD_footprint'));
+
+  url.searchParams.append("ga_id", ga_id);
+  url.searchParams.append("uuid", uuid);
+  url.searchParams.append("fb_id", fb_id);
+  url.searchParams.append("ip", ip);
+  url.searchParams.append("s_id", s_id);
+  url.searchParams.append("s_idl", s_idl);
+  url.searchParams.append("dv", dv);
+  url.searchParams.append("ul", ul);
+  url.searchParams.append("un", un);
+  url.searchParams.append("footprint", footprint);
+  if(abtest_flag){
+    url.searchParams.append("abtest_id", end_data.abtest_id);
+    url.searchParams.append("abtest_num", end_data.random_value);
+  }
+
+  window.open(url.href);
+  // get and add keyword footprint
+};
+AviviD.new_redirect_url_by_source = function (source, word) {
+  if (AviviD.web_id == 'youbeli') {
+    return AviviD.item_page_domain + AviviD.web_id + '/' + source + '/' + encodeURI(word) + '?lang=' + AviviD.languages;
+  } else {
+    //2021-07-07 Jonathan 新v3 API測試
+    return AviviD.item_page_domain + AviviD.web_id + '/' + source + '/' + encodeURI(word);
+  }
+
+};
+AviviD.search_enter = async function (sw) {
+  // search engine ABtest
+  const abtest_flag = AviviD.abtest_web_id.includes(AviviD.web_id);
+  if(abtest_flag){
+    var end_data = {};
+    let session_promise = new Promise(resolve => {
+      gtag('get', AviviD.ga_id, 'session_id', resolve);
+    });
+
+    await session_promise.then((session_id) => {
+      return AviviD.search_engine_abtest(session_id);
+    }).then((data)=>{
+      end_data = data;
+    });
+  }
+  var search_map = {
+    "pc": "#avivid_search_box",
+    "mobile": "#avivid_search_box_mobile",
+    "bottom": "#avivid_search_box_bottom",
+    "sider": "#SearchKeywordSide-up-searchBar-input",
+    "new_sider": "#sider_bar_search_input",
+    "new_sider_dialog": "#sider_bar_dialog_search_input",
+    "top_bottom": "#avivid-search-bar-tb",
+  };
+  var word = jQuery(search_map[sw]).val();
+  var event_key = "keyword_side_search";
+  if (word != "") {
+    if (sw != "sider") {
+      event_key = "keyword_search";
+    }
+    AviviD.gtm_event_send(event_key, "likr_event", word);
+    AviviD.s3_event_send(event_key, "likr_event", word);
+    //2021-07-07 Jonathan 新v3 API測試
+    url = AviviD.new_redirect_url_by_source(event_key, word);
+    url = new URL(url);
+    // add query parameters
+    ga_id = (AviviD.get_cookie_tracking('_ga') != "NaN") ? AviviD.get_cookie_tracking('_ga') : AviviD.get_cookie_tracking('gaClientId');
+    uuid = AviviD.get_cookie_tracking('AviviD_uuid');
+    fb_id = AviviD.get_cookie_tracking('_fbp');
+    ip = (AviviD.clientIP === undefined) ? "_" : AviviD.clientIP;
+    s_id = AviviD.record_user == undefined ? '_' : AviviD.record_user.s_id; // current session
+    s_idl = AviviD.record_user == undefined ? '_' : AviviD.record_user.s_idl; // previous session
+    dv = AviviD.record_user == undefined ? '_' : AviviD.record_user.dv; // device: int
+    ul = AviviD.record_user == undefined ? '_' : AviviD.record_user.ul; // referrer url
+    un = AviviD.record_user == undefined ? '_' : AviviD.record_user.un; // current url
+
+    footprint = AviviD.get_cookie_data('AviviD_footprint') == "" ? '[]' : decodeURIComponent(AviviD.get_cookie_data('AviviD_footprint'));
+
+    url.searchParams.append("ga_id", ga_id);
+    url.searchParams.append("uuid", uuid);
+    url.searchParams.append("fb_id", fb_id);
+    url.searchParams.append("ip", ip);
+    url.searchParams.append("s_id", s_id);
+    url.searchParams.append("s_idl", s_idl);
+    url.searchParams.append("dv", dv);
+    url.searchParams.append("ul", ul);
+    url.searchParams.append("un", un);
+    url.searchParams.append("footprint", footprint);
+    if(abtest_flag){
+      url.searchParams.append("abtest_id", end_data.abtest_id);
+      url.searchParams.append("abtest_num", end_data.random_value);
+    }  
+
+    window.open(url.href);
+  }
+  if(sw == "top_bottom"){
+    document.activeElement.blur();
+    AviviD.dropdown_outfocus();
+  }
+
+};
+AviviD.bar_scroll = [{
+    "row_width": 0,
+    "transform_foot": 0
+  },
+  {
+    "row_width": 0,
+    "transform_foot": 0
+  },
+  {
+    "row_width": 0,
+    "transform_foot": 0
+  },
+  {
+    "row_width": 0,
+    "transform_foot": 0
+  },
+  {
+    "row_width": 0,
+    "transform_foot": 0
+  }
+];
+AviviD.move = function (type, distance, view, bar_type) {
+  var row = AviviD["bar_scroll"][bar_type]["row_width"];
+  if (type == 0) {
+    AviviD["bar_scroll"][bar_type]["transform_foot"] -= distance;
+    if (AviviD["bar_scroll"][bar_type]["transform_foot"] < -row + view) {
+      AviviD["bar_scroll"][bar_type]["transform_foot"] = -row + view;
+    }
+    var fin_trans = AviviD["bar_scroll"][bar_type]["transform_foot"];
+  } else {
+    AviviD["bar_scroll"][bar_type]["transform_foot"] += distance;
+    if (AviviD["bar_scroll"][bar_type]["transform_foot"] > 0) {
+      AviviD["bar_scroll"][bar_type]["transform_foot"] = 0;
+    }
+    var fin_trans = AviviD["bar_scroll"][bar_type]["transform_foot"];
+  }
+  document.getElementById('avivid_bar_' + bar_type).style.transform = 'translateX(' + fin_trans + 'px)';
+};
+AviviD.move_rwd = function (type, distance, view, bar_type) {
+  var row = AviviD["bar_scroll"][bar_type]["row_width"];
+  if (type == 1) {
+    var pos = jQuery("#avivid_bar_" + bar_type).scrollLeft() + distance;
+    if (pos > row - view) {
+      pos = row - view;
+    }
+  } else {
+    var pos = jQuery("#avivid_bar_" + bar_type).scrollLeft() - distance;
+    if (pos < 0) {
+      pos = 0;
+    }
+  }
+  jQuery("#avivid_bar_" + bar_type).animate({scrollLeft: pos}, 350);
+};
+AviviD.scroll_arrow_control = function (id, scroll_left, scroll_width, window_width) {
+  var display_style_obj = {
+    "0": {
+      "l": "block",
+      "r": "block"
+    },
+    "1": {
+      "l": "none",
+      "r": "block"
+    },
+    "2": {
+      "l": "block",
+      "r": "none"
+    }
+  };
+  var display_style = "0";
+  if (scroll_left <= (window_width / 2)) {
+    display_style = "1";
+  }
+  if (scroll_left >= (scroll_width - window_width - 100)) {
+    display_style = "2";
+  }
+  document.getElementById('arrow_left_' + id).style.display = display_style_obj[display_style]["l"];
+  document.getElementById('arrow_right_' + id).style.display = display_style_obj[display_style]["r"];
+};
+AviviD.mobile_move_scroll = function (id, button_type) {
+  var window_width = jQuery('#avivid_bar_' + id).width();
+  var scroll_left = jQuery('#avivid_bar_' + id).scrollLeft();
+  var scroll_width = document.getElementById('avivid_bar_' + id).scrollWidth;
+  var div_amount = 0;
+  if (scroll_left > 0) {
+    div_amount = Math.ceil(scroll_left / window_width);
+  }
+  AviviD.scroll_arrow_control(id, scroll_left, scroll_width, window_width);
+  if (button_type == 0) {
+    var move_amount = Math.ceil(div_amount);
+    if (div_amount % 1 == 0) {
+      move_amount = div_amount + 1;
+    }
+    if (move_amount > scroll_width / window_width) {
+      move_amount = scroll_width / window_width
+    }
+    var move = move_amount * window_width;
+    var dis = move - scroll_left;
+    jQuery("#avivid_bar_" + id).animate({
+      scrollLeft: '+=' + dis
+    }, 200);
+  } else {
+    var move_amount = Math.floor(div_amount);
+    if (div_amount % 1 == 0) {
+      move_amount = div_amount - 1;
+    }
+    if (move_amount < 0) {
+      move_amount = 0
+    }
+    var move = move_amount * window_width;
+    var dis = scroll_left - move
+    jQuery("#avivid_bar_" + id).animate({
+      scrollLeft: '-=' + dis
+    }, 200);
+  }
+};
+AviviD.mobile_move_v2 = function (id) {
+  jQuery('#avivid_bar_' + id).scroll(function () {
+    var window_width = jQuery('#avivid_bar_' + id).width();
+    var scroll_left = jQuery('#avivid_bar_' + id).scrollLeft();
+    var scroll_width = document.getElementById('avivid_bar_' + id).scrollWidth;
+    AviviD.scroll_arrow_control(id, scroll_left, scroll_width, window_width);
+  });
+};
+AviviD.click_href = function (url, type) {
+  var meta_title = AviviD.get_metatitle();
+  var tag_map = ["", "guess", "footprint", "otherlike"];
+  var tag_str = tag_map[parseInt(type)];
+  var tag_map = ["keyword_side_footprint", "guess_click", "footprint_click", "otherlike_click", "", "", "avivid_cart_click", "honor_click"];
+  AviviD.gtm_event_send(tag_map[type], "likr_event", meta_title);
+  AviviD.s3_event_send(tag_map[type], "likr_event", meta_title);
+  if (AviviD.utm_mode == 1) {
+    url = url + "&utm_content=" + tag_map[type];
+  } else {
+    AviviD.console_logs("origin utm params : " + url);
+    // url = AviviD.replace_utm_paramters(url);
+    AviviD.console_logs("replace utm params : " + url);
+  }
+  //window.open(AviviD.set_click_redirect_url(url));
+  if (AviviD.web_id == 'kava' || AviviD.is_app_webview()) {
+    window.location.href = url;
+  } else {
+    window.open(url);
+  }
+};
+AviviD.is_app_webview = function(){
+  var ua = window.navigator.userAgent;
+  var ios_identifier = ["Html5Plus", "fmshopping+"];
+  var android_identifier = ["wv)"];
+  var iden = false;
+  ios_identifier.forEach(function(i){
+    if(ua.includes(i)){
+      // // log familyapp userAgent
+      // if(AviviD.web_id == 'familyapp'){
+      //   payload = {"userAgent": ua};
+      //   jQuery.ajax({
+      //     method: 'POST',
+      //     data: payload,
+      //     url: "https://rhea-cache.advividnetwork.com/api/logUA",
+      //     success: function (data) {
+      //       console.log('Done!');
+      //     },
+      //     error: function (jqXHR, textStatus, errorThrown) {
+      //       console.log("textStatus: " + textStatus);
+      //       console.log("errorThrown: " + errorThrown);
+      //     }
+      //   });
+      // }
+      iden = true;
+    }
+  });
+  android_identifier.forEach(function(i){
+    if(ua.includes(i)){
+      // // log familyapp userAgent
+      // if(AviviD.web_id == 'familyapp'){
+      //   payload = {"userAgent": ua};
+      //   jQuery.ajax({
+      //     method: 'POST',
+      //     data: payload,
+      //     url: "https://rhea-cache.advividnetwork.com/api/logUA",
+      //     success: function (data) {
+      //       console.log('Done!');
+      //     },
+      //     error: function (jqXHR, textStatus, errorThrown) {
+      //       console.log("textStatus: " + textStatus);
+      //       console.log("errorThrown: " + errorThrown);
+      //     }
+      //   });
+      // }
+      iden = true;
+    }
+  });
+  return iden;
+};
+AviviD.replace_utm_paramters = function (url) {
+  let renewURL = new URL(url);
+  let params = renewURL.searchParams;
+  for (let pair of params.entries()) {
+    if (pair[0] in AviviD.utm_replace) {
+      url = url.replace(pair[0] + "=" + pair[1], AviviD.utm_replace[pair[0]]);
+    }
+  }
+  return url;
+};
+/*AviviD.set_click_redirect_url = function(url_path){
+  let click_payload = {
+    'web_id' : AviviD.web_id,
+    'category_id' : AviviD.category_id,
+    'banner_id' : "",
+    'url' : url_path,
+    'is_button' : 0,
+    'is_onpage' : 0,
+    'push_id' : ""
+  };
+  var redirect_click_url = "https://bottlenose-lbr.likr.com.tw/save_click/";
+  var str = btoa(unescape(encodeURIComponent(JSON.stringify(click_payload))));
+  str = str.replaceAll('+','.').replaceAll('/','_').replaceAll('=','-');
+  return redirect_click_url + str;
+};*/
+AviviD.get_product_items_for_block_history = function (block_data) {
+  var footprint_id = '';
+  var data = block_data;
+  var cookie_value = AviviD.get_cookie_data('AviviD_footprint');
+  footprint_id_str = decodeURIComponent(cookie_value);
+  /* AviviD.checkFootprint(decodeURIComponent(cookie_value),1,data); */
+  if (footprint_id_str == '') {
+    /*history is empty*/
+    if (data != '_') {
+      var temp_array = [data];
+      AviviD.set_cookie_data('AviviD_footprint', JSON.stringify(temp_array), 2);
+      footprint_id = temp_array;
+    }
+  } else {
+    if (data != '_') {
+      footprint_id_str = AviviD.checkFootprint(footprint_id_str, 0, data)
+      footprint_id = JSON.parse(footprint_id_str);
+      if (data != undefined) {
+        footprint_id.push(data);
+      }
+      if (footprint_id.length > 10) {
+        footprint_id.splice(0, 1);
+      }
+      AviviD.set_cookie_data('AviviD_footprint', JSON.stringify(footprint_id), 2);
+    } else {
+      footprint_id = JSON.parse(footprint_id_str);
+    }
+  }
+  return footprint_id;
+};
+AviviD.checkFootprint = function (json_str, format_mode, check_id) {
+  if (json_str != '') {
+    var history_arr = JSON.parse(json_str);
+    var exec_arr = history_arr;
+    var regx = /[a-zA-Z]/;
+    exec_arr.forEach(function (value, index, array) {
+      if (format_mode) {
+        if (regx.exec(value)) {
+          history_arr.splice(index, 1);
+        }
+      } else {
+        if (value == check_id) {
+          history_arr.splice(index, 1);
+        }
+      }
+    });
+    return JSON.stringify(history_arr);
+  }
+  return json_str;
+};
+AviviD.transform = 0;
+AviviD.transform_foot = 0;
+AviviD.row_width = 0;
+AviviD.row_width_foot = 0;
+AviviD.console_logs = function (msg) {
+  if (AviviD.show_logs) {
+    console.log(msg);
+  }
+};
+AviviD.loadJavaScript = function (url, callback, callbackError) {
+  var script = document.createElement("script");
+  script.type = "text/javascript";
+  try {
+    if (script.readyState) {
+      script.onreadystatechange = function () {
+        if (script.readyState === "loaded" ||
+          script.readyState === "complete") {
+          script.onreadystatechange = null;
+          callback();
+        }
+      };
+    } else {
+      script.onload = function () {
+        callback();
+      };
+    }
+    script.src = url;
+    document.getElementsByTagName("head")[0].appendChild(script);
+  } catch (e) {
+    console.log(e);
+    if (null !== callbackError) callbackError(e);
+  }
+};
+AviviD.check_allow_url = async function () {
+  var unlock_block = 0;
+  var blacklisted = 0;
+  var url = window.location.href;
+
+  var config = "";
+  if (url.indexOf("AviviD_debug_mode") != -1) {
+    config = "https://rhea-cache.advividnetwork.com/include_js/" + AviviD.web_id + "/config_preview.js";
+    console.log("preview config");
+  } else {
+    config = "https://rhea-cache.advividnetwork.com/include_js/" + AviviD.web_id + "/config.js";
+    console.log("main config");
+  }
+  AviviD.loadJavaScript(config, async function () {
+    console.log(AviviD.web_id + " config.js is loaded !");
+    // clear old blocks for honeymade
+    if (AviviD.web_id == "honeymade") {
+      jQuery("div[id=search_bottom]").remove();
+      jQuery(".avivid-keyword-block-wraper").remove();
+      jQuery(".avivid_border").remove();
+      jQuery("#sider_bar_wrapper").remove();
+    }
+
+    // check language for youbeli
+    if (AviviD.web_id == "youbeli") {
+      lang = jQuery("#lang")[0];
+      if (typeof (lang) != 'undefined') {
+        lang_sel = lang.innerText;
+        switch (lang_sel) {
+          case '中文 ':
+            AviviD.languages = 'zh_MY';
+            break;
+          case 'B.Melayu ':
+            AviviD.languages = 'ms_MY';
+            break;
+          case 'English ':
+            AviviD.languages = 'en_MY';
+            break;
+          default:
+            AviviD.languages = 'en_MY';
+            break;
+        }
+      } else {
+        lang_sel = jQuery("#txtSearch")[0].placeholder;
+        switch (lang_sel) {
+          case '搜索商品，品牌，商店':
+            AviviD.languages = 'zh_MY';
+            break;
+          case 'Cari produk, jenama, kedai':
+            AviviD.languages = 'ms_MY';
+            break;
+          case 'Search for products, brands, shops':
+            AviviD.languages = 'en_MY';
+            break;
+          default:
+            AviviD.languages = 'en_MY';
+            break;
+        }
+      }
+    }
+
+    // check if blacklisted
+    if ((AviviD.blacklist) && (AviviD.blacklist["blacklist_switch"] == 1)) {
+      jQuery.each(AviviD.blacklist["blacklist_rules"], function (k, v) {
+        if (parseInt(v["force_domain"]) == 1) {
+          jQuery.each(v["domain_list"], function (key, val) {
+            if (url == val || url.indexOf(val + "?") != -1) {
+              blacklisted = 1;
+            }
+          });
+        } else if (url.indexOf(v["check_rule"]) != -1) {
+          blacklisted = 1;
+        }
+      });
+    }
+
+    await fetch("https://rhea-cache.advividnetwork.com/api/get_block_blacklist?web_id=" + AviviD.web_id)
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.text();
+    })
+    .then((response) => {
+        blacklist_string = response;
+        if(blacklist_string.length > 0){
+            blacklist = blacklist_string.split(",");
+            blacklist.forEach(entry => {
+                if(decodeURI(location.href).includes(entry)){
+                  blacklisted = 1;
+                }
+            });
+        }
+    }).catch(error => {
+        console.error(error);
+    });
+
+    if (blacklisted == 0) {
+      if (AviviD.online_mode) {
+        unlock_block = 1;
+      } else {
+        if (AviviD.preview_mode) {
+          if (url.indexOf("AviviD_debug_mode") != -1) {
+            unlock_block = 1;
+          }
+        }
+      }
+    }
+
+    if (unlock_block) {
+      jQuery.each(AviviD.css_setting, function (k, v) {
+        jQuery('head').append('<link rel="stylesheet" type="text/css" href="' + v + '">');
+      });
+      jQuery.each(AviviD.block_setting, function (keys, values) {
+        /*window[keys](values);*/
+        var check_url = AviviD.url_rules(keys, values);
+        if (check_url) {
+          if (AviviD.logo_switch == 1) {
+            //add logo
+            setTimeout(function () {
+              first_block = AviviD.find_first_block();
+              nav = ['block_like', 'block_other', 'block_history'];
+              if (nav.includes(first_block)) {
+                target = jQuery('div.avivid_title_text:first');
+              } else {
+                target = jQuery('div.avivid_keyword_title_text:first');
+              }
+              logo = '<img id="avivid_logo" src="https://rhea-cache.advividnetwork.com/AviviDlogo.svg" style="float:right;margin-top:-27px;margin-right:5px;width:auto"/>';
+              target.after(logo);
+            }, 2000);
+          }
+          return false;
+        }
+      });
+    }
+  });
+  return true;
+};
+AviviD.sider_bar_css = function (block_setting) {
+  var url_domain = "https://rhea-cache.advividnetwork.com/";
+  var web_id = AviviD.web_id;
+  var nineyi_css = 0;
+  if (web_id.indexOf("nineyi") != -1) {
+    nineyi_css = 1;
+  }
+  var css_setting = [
+    [
+      [url_domain + 'include_js/' + web_id + '/AviviD_sidebar_module_custom_onbuild.css',
+        url_domain + 'css/AviviD_sidebar_module_origin.css'
+      ],
+      [
+        url_domain + 'include_js/' + web_id + '/AviviD_sidebar_module_custom_onbuild.css',
+        url_domain + 'css/AviviD_sidebar_module_origin.css'
+      ]
+    ],
+    [
+      [
+        url_domain + 'include_js/' + web_id + '/AviviD_sidebar_module_custom_v2.css',
+        url_domain + 'css/AviviD_sidebar_module_origin_v2.css'
+      ],
+      [
+        url_domain + 'include_js/' + web_id + '/AviviD_sidebar_module_custom_itemPage.css',
+        url_domain + 'css/AviviD_sidebar_module_origin_v2.css'
+      ]
+    ]
+  ];
+  var css_binding = css_setting[nineyi_css][parseInt(block_setting["product_page_mark"])];
+  AviviD.console_logs(css_binding);
+  jQuery.each(css_binding, function (k, v) {
+    jQuery('head').append('<link rel="stylesheet" type="text/css" href="' + v + '">');
+  });
+  var new_css = url_domain + "css/AviviD_new_sider_bar_tab.css";
+  jQuery('head').append('<link rel="stylesheet" type="text/css" href="' + new_css + '">');
+  return true;
+};
+
+AviviD.abtest_web_id = [
+  "i3fresh",
+  "kingstone",
+  "ebisujapan0",
+  "shopedh",
+  "homerlifes"
+];
+if(AviviD.web_id == 'i3fresh'){
+  function gtag(){dataLayer.push(arguments);}
+}
+AviviD.search_engine_abtest = function (id) {
+  var same_id = true;
+  var random_value;
+  
+  // check if already in group
+  var time_range = (30 * 60 * 1000); //30 minutes timeout as pseudo-session
+  var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+  current_id = id;
+  if (recorded_id == '') {
+    AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+    same_id = false;
+  } else {
+    if (recorded_id != current_id) {
+      AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+      same_id = false;
+    }
+  }
+  if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+    random_value = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+  } else {
+    random_value = parseInt(Math.random() * 100);
+  }
+  AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_value, time_range);
+
+  // A: 新版, B: 舊版
+  if(random_value >= 50){
+    if(AviviD.web_id != "i3fresh"){
+      AviviD.gtm_event_send("abtest_a", "likr_ab", location.href);
+    }
+    AviviD.s3_event_send("abtest_a", "likr_ab", location.href);
+  } else {
+    if(AviviD.web_id != "i3fresh"){
+      AviviD.gtm_event_send("abtest_b", "likr_ab", location.href);
+    }
+    AviviD.s3_event_send("abtest_b", "likr_ab", location.href);
+  }
+
+  
+  end_data = {
+    "abtest_id": AviviD.get_cookie_data('AviviD_abtest_id'),
+    "random_value": parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'))
+  };
+  return end_data
+}
+AviviD.rec_module_abtest = function (block_setting) {
+  return false;
+  if (AviviD.web_id in AviviD.abtest_web_id) {
+    AviviD.event_ga_id = AviviD.abtest_web_id[AviviD.web_id];
+  } else {
+    return false;
+  }
+  // var global_ratio = ('ad_block_abtest_ratio' in AviviD['settings']) ? AviviD['settings']['ad_block_abtest_ratio'] : {};
+  var return_block_setting = {};
+  var cookie_name = '';
+  // var time_range = AviviD.Date(AviviD["settings"]["ad_block_abtest_end_time"]) - new Date();
+  var time_range = (30 * 60 * 1000); //30 minutes timeout as pseudo-session
+
+  var same_id = true;
+  //check for id cookie
+  var recorded_id = AviviD.get_cookie_data('AviviD_abtest_id');
+  AviviD.abtest_id = '';
+  try {
+    gtag('get', AviviD.event_ga_id, 'client_id', function (id) {
+      current_id = id;
+      if (recorded_id == '') {
+        AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+        same_id = false;
+      } else {
+        if (recorded_id != current_id) {
+          AviviD.set_cookie_data_by_seconds('AviviD_abtest_id', current_id, time_range);
+          same_id = false;
+        }
+      }
+    });
+  } catch (e) {
+    console.log(e);
+  }
+  // Uncomment if GA4Aviv
+  // gtag('get', AviviD.event_ga_id, 'session_id', function(id){
+  //   current_id = id;
+  // });
+  var random_value;
+  if ((AviviD.get_cookie_data('AviviD_abtest_random_value') != '') && (same_id == true)) {
+    random_value = parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value'));
+  } else {
+    random_value = Math.random() * 100;
+  }
+  // var random_value = AviviD.get_cookie_data('AviviD_abtest_random_value') != '' ? parseInt(AviviD.get_cookie_data('AviviD_abtest_random_value')) : Math.random() * 100;
+  AviviD.set_cookie_data_by_seconds('AviviD_abtest_random_value', random_value, time_range);
+  for (block_type in block_setting) {
+    cookie_name = 'AviviD_abtest_' + block_type;
+    if ((AviviD.get_cookie_data(cookie_name) != '') && (same_id == true)) {
+      return_block_setting[block_type] = (AviviD.get_cookie_data(cookie_name)) == 'true' ? true : false;
+    } else {
+      if (parseInt(block_setting[block_type]) > 0) {
+        return_block_setting[block_type] = (parseInt(block_setting[block_type]) >= random_value) ? true : false;
+      } else {
+        // var ratio = (block_type in global_ratio) ? global_ratio[block_type] : 100;
+        var ratio = 50;
+        return_block_setting[block_type] = (parseInt(ratio) >= random_value) ? true : false;
+      }
+      AviviD.console_logs("ab test expire : " + time_range);
+      if (time_range > 0) {
+        AviviD.set_cookie_data_by_seconds(cookie_name, return_block_setting[block_type], time_range);
+      }
+    }
+  }
+  return return_block_setting;
+};
+
+AviviD.Date = function (Date) {
+  MyDate.prototype = Date.prototype;
+  return MyDate;
+
+  function MyDate() {
+    if (arguments.length === 1) {
+      let arg = arguments[0];
+      if (Object.prototype.toString.call(arg) === '[object String]' &&
+        arg.indexOf('T') === -1) {
+        arguments[0] = arg.replace(/-/g, "/");
+        /*console.log(arguments[0]);*/
+      }
+    }
+    let bind = Function.bind;
+    let unbind = bind.bind(bind);
+    return new(unbind(Date, null).apply(null, arguments));
+  }
+}(Date);
+AviviD.switch_sider_bar_tab = function (sn) {
+  jQuery(".sider_bar_tab_content").hide();
+  jQuery("#sider_bar_tab_area_" + sn).show();
+  jQuery("#sider_bar_arrow_btn").attr("sn", sn);
+  jQuery("#sider_bar_arrow_btn").attr("op", 1);
+  jQuery(".sider_tab").removeClass("sider_bar_tab_active");
+  jQuery("#sider_bar_tab_nav_" + sn).addClass("sider_bar_tab_active");
+  jQuery("#sider_bar_arrow_btn").removeClass('sider_bar_switchBtn_transform');
+};
+AviviD.switch_sider_bar_arrow_btn = function () {
+  var sn = jQuery("#sider_bar_arrow_btn").attr("sn");
+  var op = jQuery("#sider_bar_arrow_btn").attr("op");
+  jQuery("#sider_bar_arrow_btn").toggleClass('sider_bar_switchBtn_transform');
+  jQuery(".sider_bar_tab_content").hide();
+  if (parseInt(op) == 0) {
+    if (parseInt(sn) == 0) {
+      sn = 1;
+    }
+    op = 1;
+  } else {
+    op = 0;
+  }
+  jQuery("#sider_bar_tab_area_" + sn).show();
+  if (op == 0) {
+    jQuery(".sider_bar_tab_content").hide();
+  }
+  jQuery("#sider_bar_arrow_btn").attr("op", op);
+  jQuery(".sider_tab").removeClass("sider_bar_tab_active");
+  jQuery("#sider_bar_tab_nav_" + sn).addClass("sider_bar_tab_active");
+};
+AviviD.sider_bar_product_move = function (mode) {
+  var h1_selector = jQuery(".sider_bar_dt_wrapper:first");
+  var h2_selector = jQuery(".sider_bar_product_title:first");
+  var element_seed = h1_selector.outerHeight() + h2_selector.outerHeight() + 2;
+  console.log(element_seed);
+  var element_selector = jQuery("#sider_bar_product_wrapper");
+  var shift = element_selector.scrollTop() - element_seed;
+  if (mode == "down") {
+    shift = element_selector.scrollTop() + element_seed;
+  }
+  element_selector.stop().animate({
+    scrollTop: shift
+  }, 1000, 'swing');
+};
+AviviD.close_search_map = function () {
+  jQuery(".sider_bar_search_dialog_wrapper").fadeOut(500);
+  AviviD.switch_sider_bar_arrow_btn();
+};
+AviviD.show_seach_map = function () {
+  if (AviviD.isMobileDevice()) {
+    AviviD.switch_sider_bar_arrow_btn();
+    jQuery(".sider_bar_search_dialog_wrapper").fadeIn(500);
+  }
+};
+AviviD.utm_replace = {
+  "utm_source": "",
+  "utm_medium": "",
+  "utm_campaign": "",
+  "utm_term": "",
+  "utm_content": ""
+};
+AviviD.language_settings = {
+  "zh_TW": {
+    "block_like": "猜你喜歡",
+    "block_keyword": "你喜歡的分類",
+    "block_other": "其他人也看了",
+    "block_history": "你剛剛看了",
+    "block_large": "尊榮專屬",
+    "block_uuid_keyword": "你喜歡的分類",
+    "block_other_keyword": "你喜歡的分類",
+    "search_title_text": "點我搜尋",
+    "block_sider_bar": "猜你喜歡",
+    "more_reading_text": "我還想看...",
+    "viewed_text": "你看過的",
+    "product_viewed_text": "你看過的商品"
+  },
+  "en_US": {
+    "block_like": "Recommended For You",
+    "block_keyword": "Recommended Category",
+    "block_other": "Frequently bought together",
+    "block_history": "Browsing History",
+    "block_large": "Recommended For You",
+    "block_uuid_keyword": "Recommended Category",
+    "block_other_keyword": "Recommended Category",
+    "search_title_text": "Search",
+    "block_sider_bar": '<img src="https://rhea-cache.advividnetwork.com/猜你喜歡.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "more_reading_text": "More...",
+    "viewed_text": '<img src="https://rhea-cache.advividnetwork.com/你看過的.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "product_viewed_text": "Browsing History"
+  },
+  "vi_VN": {
+    "block_like": "Gợi ý dành cho bạn",
+    "block_keyword": "Phân loại bạn yêu thích",
+    "block_other": "Thường xuyên mua cùng",
+    "block_history": "Đã xem gần đây",
+    "block_large": "Gợi ý dành cho bạn",
+    "block_uuid_keyword": "Phân loại bạn yêu thích",
+    "block_other_keyword": "Phân loại bạn yêu thích",
+    "search_title_text": "Tìm kiếm",
+    "block_sider_bar": "Gợi ý dành cho bạn",
+    "more_reading_text": "hơn...",
+    "viewed_text": "Đã xem gần đây",
+    "product_viewed_text": "Đã xem gần đây"
+  },
+  "en_MY": {
+    "block_like": "Recommended For You",
+    "block_keyword": "Recommended Category",
+    "block_other": "Frequently bought together",
+    "block_history": "Browsing History",
+    "block_large": "Recommended For You",
+    "block_uuid_keyword": "Recommended Category",
+    "block_other_keyword": "Recommended Category",
+    "search_title_text": "Search",
+    "block_sider_bar": '<img src="https://rhea-cache.advividnetwork.com/猜你喜歡.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "more_reading_text": "More...",
+    "viewed_text": '<img src="https://rhea-cache.advividnetwork.com/你看過的.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "product_viewed_text": "Browsing History"
+  },
+  "zh_MY": {
+    "block_like": "猜你喜歡",
+    "block_keyword": "你喜歡的分類",
+    "block_other": "其他人也看了",
+    "block_history": "你剛剛看了",
+    "block_large": "尊榮專屬",
+    "block_uuid_keyword": "你喜歡的分類",
+    "block_other_keyword": "你喜歡的分類",
+    "search_title_text": "點我搜尋",
+    "block_sider_bar": "猜你喜歡",
+    "more_reading_text": "我還想看...",
+    "viewed_text": "你看過的",
+    "product_viewed_text": "你看過的商品"
+  },
+  "ms_MY": {
+    "block_like": "Khas Untukmu",
+    "block_keyword": "Kategori Berkait",
+    "block_other": "Anda Juga Mungkin Menyukai",
+    "block_history": "Baru Dilihat",
+    "block_large": "Khas Untukmu",
+    "block_uuid_keyword": "Kategori Berkait",
+    "block_other_keyword": "Kategori Berkait",
+    "search_title_text": "Search",
+    "block_sider_bar": '<img src="https://rhea-cache.advividnetwork.com/猜你喜歡.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "more_reading_text": "More...",
+    "viewed_text": '<img src="https://rhea-cache.advividnetwork.com/你看過的.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "product_viewed_text": "Baru Dilihat"
+  },
+  "id_ID": {
+    "block_like": "Yang mungkin disuka",
+    "block_keyword": "Kategori yang Anda suka",
+    "block_other": "Orang lain juga telah melihat",
+    "block_history": "Kamu baru saja telah melihat",
+    "block_large": "Yang mungkin disuka",
+    "block_uuid_keyword": "Kategori yang Anda suka",
+    "block_other_keyword": "Kategori yang Anda suka",
+    "search_title_text": "Klik saya untuk mencari",
+    "block_sider_bar": '<img src="https://rhea-cache.advividnetwork.com/猜你喜歡.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "more_reading_text": "Saya masih ingin melihat",
+    "viewed_text": '<img src="https://rhea-cache.advividnetwork.com/你看過的.png"; style="margin:5px 0px 5px 0px; padding:0px 2px 0px 2px; width:30px;">',
+    "product_viewed_text": "Produk yang pernah Anda lihat"
+  }
+};
+AviviD.blog_check = {
+  "pixnet": {
+    "rule": "pixnet.net",
+    "enabled": 1,
+    "id_object": "pixnet"
+  }
+};
+AviviD.pixnet = {
+  "weibaby0109": {
+    "web_id": "weibaby0109",
+    "enbaled": 1
+  }
+};
+
+AviviD.block_retry = 0;
+AviviD.blod_mode = 0;
+AviviD.blog_name = "";
+AviviD.blod_id_to_web_id = "";
+/* check permission and call function after config loading */
+if (("ad_block_enabled" in AviviD["settings"]) &&
+  parseInt(AviviD.settings.ad_block_enabled) == 1) {
+  AviviD.blod_mode = 0;
+
+  //2021-07-29 Check for blog web_id first
+  AviviD.check_url = window.location.href;
+  AviviD.check_blog = 0;
+  AviviD.blog_id_object = {};
+  jQuery.each(AviviD.blog_check, function (k, v) {
+    if (v["enabled"] == 1 && AviviD.check_url.indexOf(v["rule"]) != -1) {
+      AviviD.check_blog = 1;
+      AviviD.blog_id_object = AviviD[v["id_object"]];
+      AviviD.blog_name = k;
+      return false;
+    }
+  });
+  if (AviviD.check_blog == 1) {
+    jQuery.each(AviviD.blog_id_object, function (k1, v1) {
+      if (v1["enbaled"] == 1 && AviviD.check_url.indexOf(k1) != -1) {
+        AviviD.blod_mode = 1;
+        AviviD.blod_id_to_web_id = v1["web_id"];
+        return false;
+      }
+    });
+    console.log(AviviD.web_id + " blog is on ! data web_id : " + AviviD.blod_id_to_web_id);
+  }
+  if (AviviD.blod_id_to_web_id != "") {
+    AviviD.web_id = AviviD.blod_id_to_web_id;
+  }
+  AviviD.check_allow_url();
+} else {
+  console.log("ignore config");
+}
+
+AviviD.block_cart_recommend = function (block_name, ajax_setting, block_setting, origin_setting) {
+  // console.log(block_name,ajax_setting,block_setting,origin_setting);
+  let cart_productId = AviviD.get_cookie_data('AviviD_cart_id') == null ? '' : AviviD.get_cookie_data('AviviD_cart_id');
+  let purchased_productId = AviviD.get_cookie_data('AviviD_purchased_id') == null ? '' : AviviD.get_cookie_data('AviviD_purchased_id');
+  var payload = {
+    "web_id": AviviD.web_id,
+    "main_product_id": cart_productId,
+    "purchased_product_id": purchased_productId,
+  };
+  ajax_setting["payload"] = payload;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+}
+AviviD.append_cart = function (block_name, return_data, block_setting, origin_setting) {
+  var currency = '$';
+  if (typeof (AviviD.currency) != 'undefined') {
+    currency = AviviD.currency;
+  }
+  if(AviviD.logo_switch == 1){
+    logo_element = '<span class="avivid-cart-logo"></span>';
+  } else {
+    logo_element = '';
+  }
+  let overwrite_width = block_setting["overwrite_bar_width"] == 0 ? '100%' : block_setting["overwrite_bar_width"] + 'px';
+  let show_toTop = block_setting["overwrite_color"] == 'avivid_totop' ? 'avivid-active-totop' : '';
+  let cart_template = `<div class="avivid-cart" id="avivid-cart" style="max-width: ` + overwrite_width + `;">
+                          <div class="avivid-cart-title" style="background-color:` + block_setting['overwrite_color'] + `;">
+                            <div style="display:flex;align-items:normal;">
+                              <span class="avivid-cart-title-text">推薦你一起買</span>
+                              <img class="avivid-cart-toggle-small" src="https://rhea-cache.advividnetwork.com/imagefile/cart_toggle_small.svg" onclick="AviviD.cart_toggle()">
+                            </div>
+                            `+ logo_element +`
+                          </div>
+                          <div class="avivid-cart-wraper"  id="avivid-cart-wraper">
+                              <div class="avivid-cart-left" onclick="AviviD.navCart('left');"></div>
+                              <div class="avivid-cart-right" onclick="AviviD.navCart('right');"></div>
+                              <div class="avivid-cart-list">
+                              </div>
+                              <div class="avivid-cart-totop ` + show_toTop + `" id="avivid-totop" onclick="AviviD.toTop();">結帳</div>
+                          </div>
+                      </div>`;
+  let toTopMob_template = `<div class="avivid-cart-totop-mob ` + show_toTop + `"  id="avivid-totop-mob" onclick="AviviD.toTop();"><div class="avivid-cart-totop-mob-btn">結帳</div></div>`;
+  cart_element = jQuery.parseHTML(cart_template);
+  for (let i = 0; i < return_data.length; i++) {
+    let product_price = parseFloat(return_data[i]['sale_price']) == 0 ? return_data[i]['price'] : return_data[i]['sale_price'];
+    let template = `<div class="avivid-cart-item" onclick="AviviD.click_href('` + return_data[i]['url'] + `', 6);";>
+                      <div class="avivid-item-image" style="background-image: url('` + return_data[i]['image'] + `');"></div>
+                      <div class="avivid-item-body">
+                        <span class="avivid-item-title">` + return_data[i]['title'] + `</span>
+                        <span class="avivid-item-price">` + currency + product_price + `</span>
+                        <a href="#" class="btn btn-primary avivid-item-add">加入購物車</a>
+                      </div>
+                    </div>`;
+    jQuery(cart_element).find('.avivid-cart-list').append(template);
+  }
+
+  if(block_setting["mobile_toggle_switch"]){
+    cart_toggle_big = `<img class="avivid-cart-toggle-big" 
+                        src="https://rhea-cache.advividnetwork.com/imagefile/cart_toggle_big.svg" 
+                        style="bottom: `+ block_setting["toggle_bottom_padding"] +`px" onclick="AviviD.cart_toggle()"></img>`;
+    jQuery(cart_element).find('.avivid-cart-list').append(cart_toggle_big);
+  }
+
+  if (document.getElementById("avivid-cart-wraper") == null && return_data.length > 0) {
+    AviviD.cart_bar_append(cart_element, "avivid-cart", block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+    jQuery('#avivid-cart-wraper').css('min-height', jQuery('.avivid-cart-item').height() + 'px');
+    if (show_toTop == 'avivid-active-totop') {
+      jQuery('body').append(toTopMob_template);
+      window.addEventListener('scroll', function (event) {
+        AviviD.cartScroll();
+      });
+    }
+  }
+  // let image_height = jQuery('.avivid-item-image').width()/4*3;//adjust image height to 4:3
+  // jQuery('.avivid-item-image').height(image_height);
+}
+AviviD.cart_bar_append = function(bar_element, tag_id, selector, force_append, insert_before){
+  if(jQuery("#"+tag_id).length > 0){
+    console.log(tag_id + ' already exists');
+    return 0;
+  }
+  console.log('try to insert ' + tag_id);
+  if (force_append) {
+    jQuery(selector).append(bar_element);
+  } else {
+    if (insert_before) {
+      jQuery(bar_element).insertBefore(selector);
+    } else {
+      jQuery(bar_element).insertAfter(selector);
+    }
+  }
+  if(jQuery("#"+tag_id).length == 0){
+    AviviD.block_retry += 1;
+    if(AviviD.block_retry < 11){
+      setTimeout(AviviD.cart_bar_append, 500, bar_element, tag_id, selector, force_append, insert_before);
+    }
+  } else{
+    height = AviviD.cart_height_resize();
+    jQuery('.avivid-cart-list').height(height);
+    addEventListener('resize', function(){
+      height = AviviD.cart_height_resize();
+      jQuery('.avivid-cart-list').height(height);
+    });
+  }
+};
+AviviD.navCart = function (direction) {
+  if (jQuery(window).width() > 768) {
+    let current_position = jQuery('.avivid-cart-list').scrollLeft();
+    switch (direction) {
+      case 'left':
+        jQuery('.avivid-cart-list').scrollLeft(current_position + jQuery('.avivid-cart-item').width());
+        break;
+      case 'right':
+        jQuery('.avivid-cart-list').scrollLeft(current_position - jQuery('.avivid-cart-item').width());
+        break;
+    }
+  }
+}
+AviviD.toTop = function () {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
+}
+AviviD.cartItem_click = function (url) {
+  window.open(url, '_blank');
+}
+
+AviviD.cartScroll = function () {
+  // console.log(jQuery('.avivid-cart-list').offset().top);
+  // console.log(jQuery(window).scrollTop());
+  if (jQuery(window).scrollTop() + jQuery(window).height() > jQuery('.avivid-cart-list').offset().top) {
+    //cart list 本身高度 - ( (browser高度 + 滾輪往下滑動高度) - cart list距離網頁頂部高度)
+    let adjust_height = jQuery('.avivid-cart-list').height() - ((jQuery(window).scrollTop() + jQuery(window).height()) - jQuery('.avivid-cart-list').offset().top)
+    // console.log(adjust_height);
+    if (adjust_height > 0) {
+      jQuery("#avivid-totop").css('top', '-' + (100 + adjust_height) + 'px');
+    } else {
+      jQuery("#avivid-totop").css('top', '0px');
+    }
+    if (jQuery(window).width() < 768) {
+      jQuery("#avivid-totop-mob").css('display', 'flex');
+    }
+  } else {
+    jQuery("#avivid-totop-mob").css('display', 'none');
+  }
+
+}
+AviviD.cart_toggle = function(){
+  cur_height = jQuery('.avivid-cart-list').height();
+  if(cur_height > 0){
+    jQuery('.avivid-cart-toggle-small').animate({rotate: "180deg"});
+    jQuery('.avivid-cart-list').animate({'height': 0}, complete = function(){jQuery('.avivid-cart-list').toggle();});
+  } else {
+    jQuery('.avivid-cart-toggle-small').animate({rotate: "0deg"});
+    jQuery('.avivid-cart-list').toggle();
+    // jQuery('.avivid-cart-list').animate({'height': '5px'});
+    height = AviviD.cart_height_resize();
+    jQuery('.avivid-cart-list').animate({'height': height + 'px'});
+  }
+}
+AviviD.cart_height_resize = function(){
+  if(jQuery('.avivid-cart-list').is(':visible')){
+    if(window.innerWidth > 768){
+    // desktop height
+      rows = 2;
+    } else {
+      // mobile height
+      rows = 3;
+    }
+    height = ((jQuery('.avivid-cart-item').height()) * rows) + (jQuery('.avivid-cart-list').width()*(2/100));
+    return height;
+  } else {
+    return 0;
+  }
+}
+
+AviviD.block_keyword_searchbar = function (block_name, ajax_setting, block_setting, origin_setting) {
+  var meta_title = AviviD.get_metatitle();
+  var meta_url = document.querySelector("meta[property='og:url']") !== null ? document.querySelector("meta[property='og:url']").getAttribute('content') : location.href;
+  var cache_time = new Date().getHours();
+  let footprint = decodeURIComponent(AviviD.get_cookie_data('AviviD_footprint'));
+  let random_fp = '';
+  is_product_page = AviviD.check_for_product_page();
+  if (footprint != '' && footprint != '[null]') {
+    footprint = JSON.parse(footprint);
+    random_fp = footprint[Math.floor(Math.random() * footprint.length)];
+  }
+  if(is_product_page == 0){
+    meta_title = '_';
+    meta_url = '_';
+  }
+  ajax_setting["payload"] = {
+    "web_id": AviviD.web_id,
+    "cache_time": cache_time,
+    "title": meta_title,
+    "url": meta_url,
+    "footprint": random_fp,
+    "is_item": is_product_page
+  }; /* Object.assign(obj1,obj2) */
+  ajax_setting["cache"] = true;
+  AviviD.get_ajax_data(block_name, ajax_setting, block_setting, origin_setting);
+  ajax_setting["cache"] = false;
+};
+AviviD.keyword_searchbar = function (block_name, block_data, block_setting, origin_setting) {
+  AviviD.keyword_list = block_data;
+  var search_image = "https://rhea-cache.advividnetwork.com/imagefile/search_icon.svg";
+  var search_logo = "https://rhea-cache.advividnetwork.com/imagefile/avivid_logo.svg";
+  var search_title = AviviD.language_settings[AviviD.languages]["search_title_text"];
+  let overwrite_width = block_setting["overwrite_bar_width"] == 0 ? '100%' : block_setting["overwrite_bar_width"] + 'px';
+  let overwrite_color = block_setting["overwrite_color"] == '' ? '' : block_setting["overwrite_color"];
+  let shift_right = block_setting["shift_right"] == 0 ? 0 : block_setting["shift_right"];
+
+  if(!('fpWord_switch' in AviviD)){
+    AviviD.fpWord_switch = 1;
+  }
+  if(!('seoItemWord_switch' in AviviD)){
+    AviviD.seoItemWord_switch = 1;
+  }
+
+  let shift_string = '';
+  if (shift_right != 0){
+    shift_string = "position: relative; left: " + shift_right + "px;";
+  }
+  search_id = 'search_tb_1';
+  if(AviviD.logo_switch == 1){
+    logo_element = `<img src="` + search_logo + `" class="avivid-searchbar-logo" onclick = "AviviD.searchbar_focus('focus');"></img>`;
+  } else {
+    logo_element = '';
+  }
+  let keyword_searchbar_html = `<div class="avivid-keyword-block-wraper ` + overwrite_color + `" id="search_tb_1" style="max-width: ` + overwrite_width + `;` + shift_string + `">
+                                  <div class="avivid-searchbar-wraper" ">
+                                    <input  id="avivid-search-bar-tb"
+                                      type="search" placeholder=""
+                                      class="avivid-searchbar" autocomplete="off" 
+                                      onsearch="AviviD.search_enter('top_bottom');"
+                                      onfocus = "AviviD.searchbar_focus('focus');"
+                                      onfocusout = "AviviD.searchbar_focus('outfocus');"
+                                      onkeyup = "AviviD.dropdown_filter();"
+                                    />
+                                    `+ logo_element +`
+                                    <img src="` + search_image + `" class="avivid-searchbar-icon" onclick="AviviD.search_enter('top_bottom');" >
+                                    <span id="avivid-dropdown-close" onclick="AviviD.dropdown_outfocus();">取消</span>
+                                    <div id="avivid-search-dropdown" class="avivid-dropdown-content">
+                                    </div>
+                                  </div>
+                                  <div class="avivid-keyword-wraper">
+                                    <div id="avivid-keyword-fpWord-title" class="avivid-keyword-title">歷史紀錄</div>
+                                    <div id="avivid-keyword-fpWord-wrapper" class="avivid-keyword-subwrapper" style="max-width: ` + overwrite_width + `;">
+                                      <div class="avivid-keyword-fpWord">
+                                      </div>
+                                    </div>
+                                    <div id="avivid-keyword-seoItemWord-title" class="avivid-keyword-title">你喜歡的分類</div>
+                                    <div id="avivid-keyword-seoItemWord-wrapper" class="avivid-keyword-subwrapper" style="max-width: ` + overwrite_width + `;">
+                                      <div class="avivid-keyword-seoItemWord">
+                                      </div>
+                                    </div>
+                                    <div id="avivid-keyword-hotWordCdn-title" class="avivid-keyword-title" style="display: none;">熱門分類</div>
+                                    <div id="avivid-keyword-hotWordCdn-wrapper" class="avivid-keyword-subwrapper" style="max-width: ` + overwrite_width + `;">
+                                      <div class="avivid-keyword-hotWordCdn" style="display: none;">
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>`;
+  keyword_searchbar_element = jQuery.parseHTML(keyword_searchbar_html);
+
+  // check for keyword
+  if(block_data['fpWord'].length + block_data['seoItemWord'].length == 0){
+    return;
+  }
+
+  Object.keys(block_data).forEach(element => {
+    // console.log(block_data[element]);
+    for (let i = 0; i < block_data[element].length; i++) {
+      let ketword_template = `<div class="avivid-keyword-content" onclick="AviviD.search_word_click('` + block_data[element][i] + `','block_keyword')">` + block_data[element][i] + `</div>`;
+      jQuery(keyword_searchbar_element).find(`.avivid-keyword-` + element).append(ketword_template);
+    }
+  });
+  // hide fpword if no value
+  if ((block_data['fpWord'].length == 0) || (AviviD.fpWord_switch == 0)){
+    jQuery(keyword_searchbar_element).find(`.avivid-keyword-fpWord`).css('display', 'none');
+    jQuery(keyword_searchbar_element).find('#avivid-keyword-fpWord-title').css('display', 'none');
+  }
+  if ((block_data['seoItemWord'].length == 0) || (AviviD.seoItemWord_switch == 0)){
+    jQuery(keyword_searchbar_element).find(`.avivid-keyword-seoItemWord`).css('display', 'none');
+    jQuery(keyword_searchbar_element).find('#avivid-keyword-seoItemWord-title').css('display', 'none');
+  }
+
+  if(AviviD.searchbar_switch == 0){
+    jQuery(keyword_searchbar_element).find(`.avivid-searchbar-wraper`).hide();
+  }
+
+  AviviD.searchbar_append(keyword_searchbar_element, search_id, block_setting['css_selector'], block_setting["css_html_force_append"], block_setting["css_html_insert_before"]);
+  AviviD.search_dropdown_append();
+}
+AviviD.searchbar_append = function(bar_element, tag_id, selector, force_append, insert_before){
+  if(jQuery("#"+tag_id).length > 0){
+    console.log(tag_id + ' already exists');
+    return 0;
+  }
+  console.log('try to insert ' + tag_id);
+  if (force_append) {
+    jQuery(selector).append(bar_element);
+  } else {
+    if (insert_before) {
+      jQuery(bar_element).insertBefore(selector);
+    } else {
+      jQuery(bar_element).insertAfter(selector);
+    }
+  }
+  if(jQuery("#"+tag_id).length == 0){
+    AviviD.block_retry += 1;
+    if(AviviD.block_retry < 11){
+      setTimeout(AviviD.searchbar_append, 500, bar_element, tag_id, selector, force_append, insert_before);
+    }
+  } else{
+    setTimeout(AviviD.keyword_add_toggle, 5);
+  }
+};
+AviviD.search_dropdown_append = async function(){
+  is_product_page = AviviD.check_for_product_page();
+  body = {
+    web_id: AviviD.web_id,
+    count: 500
+  };
+  if(is_product_page == 1){
+    body.url = location.href;
+    body.title = AviviD.title;
+  }
+  await fetch("https://rhea-cache.advividnetwork.com/api/getSearchKeywords?" + new URLSearchParams(body))
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then((response) => {
+        AviviD.search_keyword_data = response;
+        AviviD.item_keyword = [];
+        AviviD.discount_keyword = [];
+        AviviD.hot_keyword = [];
+        Object.values(AviviD.search_keyword_data.item).forEach(e => {
+          AviviD.item_keyword.push(e.keyword);
+        });
+        Object.values(AviviD.search_keyword_data.discount).forEach(e => {
+            AviviD.discount_keyword.push(e.keyword);
+        });
+        Object.values(AviviD.search_keyword_data.hot).forEach(e => {
+            AviviD.hot_keyword.push(e.keyword);
+        });
+        AviviD.all_search_keyword = AviviD.item_keyword.concat(AviviD.discount_keyword).concat(AviviD.hot_keyword);
+        AviviD.all_search_keyword = [...new Set(AviviD.all_search_keyword)];
+        keyword_candidate = [];
+        if(AviviD.item_keyword.length < 10){
+          item_diff = 10 - AviviD.item_keyword.length;
+          item_target = AviviD.item_keyword.length;
+        } else {
+            item_diff = 0;
+            item_target = 10;
+        }
+        for(i=0;i<item_target;i++){
+            keyword_candidate.push(AviviD.item_keyword[i]);
+        }
+        discount_unique = AviviD.discount_keyword.filter(word => !keyword_candidate.includes(word));
+        if(discount_unique.length < item_diff){
+          discount_diff = item_diff - discount_unique.length;
+          discount_target = discount_unique.length;
+        } else {
+            discount_diff = 0;
+            discount_target = item_diff;
+        }
+        for(i=0;i<discount_target;i++){
+            keyword_candidate.push(discount_unique[i]);
+        }
+        if(keyword_candidate.length < 10){
+            hot_unique = AviviD.hot_keyword.filter(word => !keyword_candidate.includes(word));
+            hot_target = hot_unique.length > discount_diff ? discount_diff : hot_unique.length;
+            for(i=0;i<hot_target;i++){
+                keyword_candidate.push(hot_unique[i]);
+            }
+        }
+        keyword_candidate.forEach((e) => {
+            drop_keyword = `<a onclick="AviviD.click_dropdown(this)">` + e + `</a>`;
+            jQuery("#avivid-search-dropdown").append(drop_keyword);
+        });
+        if(AviviD.logo_switch == 1){
+          jQuery(`<span id="avivid-placeholder"
+                      onclick= "AviviD.searchbar_focus('focus');"
+                  >`+AviviD.search_keyword_data.default[0].keyword+`</span>`).insertBefore('.avivid-searchbar-icon');
+        } else {
+          jQuery(`<span id="avivid-placeholder"
+                      onclick= "AviviD.searchbar_focus('focus');" style="left:15px;"
+                  >`+AviviD.search_keyword_data.default[0].keyword+`</span>`).insertBefore('.avivid-searchbar-icon');
+        }
+    }).catch(error => {
+        console.error(error);
+    });
+}
+AviviD.dropdown_filter = function(){
+    special_background = '';
+    divide_point = -1;
+    if(AviviD.all_search_keyword !== undefined){
+        keyword_candidate = [];
+        search_word = jQuery('#avivid-search-bar-tb').val();
+        if(search_word.length == 0){
+          if(AviviD.item_keyword.length < 10){
+            item_diff = 10 - AviviD.item_keyword.length;
+            item_target = AviviD.item_keyword.length;
+          } else {
+              item_diff = 0;
+              item_target = 10;
+          }
+          for(i=0;i<item_target;i++){
+              keyword_candidate.push(AviviD.item_keyword[i]);
+          }
+          discount_unique = AviviD.discount_keyword.filter(word => !keyword_candidate.includes(word));
+          if(discount_unique.length < item_diff){
+            discount_diff = item_diff - discount_unique.length;
+            discount_target = discount_unique.length;
+          } else {
+              discount_diff = 0;
+              discount_target = item_diff;
+          }
+          for(i=0;i<discount_target;i++){
+              keyword_candidate.push(discount_unique[i]);
+          }
+          if(keyword_candidate.length < 10){
+              hot_unique = AviviD.hot_keyword.filter(word => !keyword_candidate.includes(word));
+              hot_target = hot_unique.length > discount_diff ? discount_diff : hot_unique.length;
+              for(i=0;i<hot_target;i++){
+                  keyword_candidate.push(hot_unique[i]);
+              }
+          }
+        } else if(search_word.length <= 2){
+            match_words = AviviD.all_search_keyword.filter(word => word.toLowerCase().includes(search_word.toLowerCase()));
+            match_target = match_words.length > 10 ? 10 : match_words.length;
+            for(i=0;i<match_target;i++){
+                keyword_candidate.push(match_words[i]);
+            }
+            divide_point = match_target;
+            if(keyword_candidate.length < 10){
+                eligible_discount = AviviD.discount_keyword.filter(word => !keyword_candidate.includes(word));
+                discount_target = eligible_discount.length > 3 ? 3 : eligible_discount.length;
+                for(i=0;i<discount_target;i++){
+                    keyword_candidate.push(eligible_discount[i]);
+                }
+                candidate_target = 10 - keyword_candidate.length;
+                if(candidate_target > 0){
+                    hot_unique = AviviD.hot_keyword.filter(word => !keyword_candidate.includes(word));
+                    hot_target = hot_unique.length > candidate_target ? candidate_target : hot_unique.length;
+                    for(i=0;i<hot_target;i++){
+                        keyword_candidate.push(hot_unique[i]);
+                    }
+                }
+            }
+        } else {
+            full_match = AviviD.all_search_keyword.filter(word => word.toLowerCase() == search_word.toLowerCase());
+            match_words = AviviD.all_search_keyword.filter(word => word.toLowerCase().includes(search_word.toLowerCase()));
+            if(full_match.length > 0){
+                keyword_candidate.push(full_match[0]);
+                special_background = '#F2F2F2';
+                divide_point = 1;
+            } else if (match_words.length > 0){
+                keyword_candidate.push(match_words[0]);
+                special_background = '#F2F2F2';
+                divide_point = 1;
+            }
+            eligible_discount = AviviD.discount_keyword.filter(word => !keyword_candidate.includes(word));
+            discount_target = eligible_discount.length > 3 ? 3 : eligible_discount.length;
+            for(i=0;i<discount_target;i++){
+                keyword_candidate.push(eligible_discount[i]);
+            }
+            diff = 10 - keyword_candidate.length;
+            if(diff > 0){
+                hot_unique = AviviD.hot_keyword.filter(word => !keyword_candidate.includes(word));
+                hot_target = hot_unique.length > diff ? diff : hot_unique.length;
+                for(i=0;i<hot_target;i++){
+                    keyword_candidate.push(hot_unique[i]);
+                }
+            }
+        }
+        if(keyword_candidate.length > 0){
+            jQuery("#avivid-search-dropdown").empty();
+            keyword_candidate.forEach((e) => {
+                drop_keyword = `<a onclick="AviviD.click_dropdown(this)">` + e + `</a>`;
+                jQuery("#avivid-search-dropdown").append(drop_keyword);
+            });
+            jQuery("#avivid-search-dropdown").scrollTop(0);
+            if(special_background != ''){
+                jQuery("#avivid-search-dropdown > a:first-of-type").css('background-color', special_background);
+            }
+            if((divide_point > -1) && (divide_point < 10)){
+                jQuery(`<a style="font-weight: 700; border-top: 1px solid #ddd;">熱門關鍵字</a>`).insertBefore('#avivid-search-dropdown > a:eq('+ divide_point +')');
+            }
+        }
+    }
+}
+AviviD.keyword_add_toggle = function(){
+  var keyword_types = ["seoItemWord", "fpWord", "hotWordCdn"];
+  keyword_types.forEach(function(type){
+      if (jQuery('.avivid-keyword-' + type).width() > window.innerWidth) {
+          let toggle_icon = "https://rhea-cache.advividnetwork.com/imagefile/keyword_toggle.svg";
+          let button = `
+              <img id="avivid-keyword-` + type + `-toggle" 
+                  class="avivid-keyword-toggle" 
+                  src="`+ toggle_icon +`" 
+                  style="cursor:pointer; display:inline; rotate:180deg;" 
+                  onclick="AviviD.keyword_expand_toggle('`+ type +`')">
+          `;
+          jQuery('#avivid-keyword-' + type + '-title').append(button);
+      }
+  });
+}
+AviviD.keyword_expand_toggle = function (keyword_type){
+  var target = ".avivid-keyword-" + keyword_type;
+  var toggle = "#avivid-keyword-" + keyword_type + "-toggle";
+  if(jQuery(target).width() > window.innerWidth){
+      jQuery(target).width("100vw");
+      jQuery(toggle).animate({rotate: "0deg"});
+  } else {
+      jQuery(target).width("max-content");
+      jQuery(toggle).animate({rotate: "180deg"});
+  }
+};
+AviviD.searchbar_focus = function (type) {
+  if (type == 'focus') {
+    jQuery('.avivid-searchbar-logo').css('display', 'none');
+    jQuery('#avivid-search-dropdown').show();
+    jQuery(`#avivid-dropdown-close`).show();
+    jQuery('.avivid-searchbar-icon').hide();
+    jQuery('#avivid-placeholder').hide();
+    AviviD.dropdown_filter();
+    if(AviviD.search_keyword_data !== undefined){
+        jQuery('#avivid-search-bar-tb').attr('placeholder', AviviD.search_keyword_data.default[0].keyword);
+    }
+  } else if (type = 'outfocus') {
+    jQuery('#avivid-search-bar-tb').attr('placeholder', '');
+    if(jQuery('#avivid-search-bar-tb').val() == ''){
+      jQuery('.avivid-searchbar-logo').css('display', 'block');
+      jQuery('#avivid-placeholder').show();
+    }
+  }
+}
+AviviD.dropdown_outfocus = function(){
+    jQuery('#avivid-search-dropdown').hide();
+    jQuery('#avivid-dropdown-close').hide();
+    jQuery('#avivid-search-bar-tb').val('');
+    jQuery('#avivid-search-bar-tb').attr('placeholder', '');
+    jQuery('.avivid-searchbar-logo').css('display', 'block');
+    jQuery('#avivid-placeholder').show();
+    jQuery('.avivid-searchbar-icon').show();
+}
+AviviD.click_dropdown = async function (target) {
+    AviviD.search_word_click(jQuery(target).text(),'block_keyword_searchbar')
+    AviviD.dropdown_outfocus();
+}
+AviviD.get_metatitle = function () {
+  if (AviviD.web_id == 'greatshop') {
+    var meta_title = document.querySelector("title") !== null ? document.querySelector("title").textContent : '_';
+    return meta_title;
+  } else {
+    var meta_title = document.querySelector("meta[property='og:title']") !== null ? document.querySelector("meta[property='og:title']").getAttribute('content') : '_';
+    if (meta_title == '_') {
+      meta_title = document.querySelector("meta[name='og:title']") !== null ? document.querySelector("meta[name='og:title']").getAttribute('content') : '_';
+      if (meta_title == '_') {
+        meta_title = document.querySelector("title") !== null ? document.querySelector("title").textContent : '_';
+      }
+    }
+    return meta_title;
+  }
+}
+AviviD.check_for_product_page = function(){
+  var url = location.href;
+  var pro_mark = 0;
+  jQuery.each(AviviD.block_setting, function (name, settings) {
+    if (parseInt(settings["force_domain"]) == 1) {
+      jQuery.each(settings["domain_list"], function (k, v) {
+        if (url == v || url.indexOf(v + "?") != -1) {
+          pro_mark = settings['product_page_mark'];
+          return false;
+        }
+      });
+    } else {
+      if (url.indexOf(settings["check_rule"]) != -1) {
+        pro_mark = settings['product_page_mark'];
+        return false;
+      }
+    }
+  });
+  return pro_mark;
+}
+
+// 針對single page application類網站
+let lastUrl = location.href; 
+new MutationObserver(async () => {
+  const url = location.href;
+  if (url !== lastUrl) {
+    lastUrl = url;
+    AviviD.onUrlChange();
+  }
+}).observe(document, {subtree: true, childList: true});
+
+AviviD.onUrlChange = async function() {
+  console.log('URL changed!', location.href);
+  AviviD.block_retry = 0;  
+  AviviD.check_allow_url();
+}
+
+AviviD.get_cookie_tracking = function (cookie_name = "AviviD_session_id") {
+  let arr = document.cookie.match(new RegExp("(^| )" + cookie_name + "=([^;]*)(;|$)"));
+  if (arr != null) {
+    return decodeURI(arr[2]);
+  };
+  return "NaN";
+};
+// ecom preview
+if (window.location.href.indexOf("AviviD_ecom_preview") != -1) {
+  jQuery.getScript('https://brownie.likr.app/preview/preview_script.js')
+}
+
+AviviD.random_rec = false;
