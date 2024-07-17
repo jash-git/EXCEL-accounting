@@ -1,0 +1,1 @@
+ffmpeg -i c57ef1d1-9469-43e3-88cf-5a324bb021fb.mp4 -s 640x480 -b:v 500k -vcodec libx264 -r 29.97 -acodec libvo_aacenc -b:a 48k -ac 2 -ar 44100 -profile:v baseline -level 3.0 -f mp4 -y will.mp4
